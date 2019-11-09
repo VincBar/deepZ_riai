@@ -6,9 +6,9 @@ import numpy as np
 
 
 def pad_K_dim(x, pad):
-    padding = [0] * (len(x.shape) * 2 + 2)
+    padding = [0] * len(x.shape) * 2
     padding[-3] = pad
-    return nn.functional.pad(x[:, None, ...], padding, mode='constant', value=0)
+    return nn.functional.pad(x, padding, mode='constant', value=0)
 
 
 def extend_Z(x, vals):
@@ -27,7 +27,7 @@ class ToZ(nn.Module):
         self.eps = eps
 
     def forward(self, x):
-        return extend_Z(x, self.eps)
+        return extend_Z(x[:, None, ...], self.eps)
 
 
 class Normalization(nn.Module):
@@ -154,7 +154,7 @@ class LinearZ(nn.Linear):
 
     def forward(self, x):
         # input (N, K, input_size)
-        print(x.shape)
+        print('LinearZ', x.shape)
         N, K, input_size = x.shape
         x = x.view(N * K, input_size)
         out = super(LinearZ, self).forward(x).view(N, K, -1)
@@ -212,6 +212,7 @@ class ReLUZ(nn.Module):
     def forward(self, x):
         # TODO: I don't know if the following is computed in parallel, if written like this
         # input is (N, K, c_in, H, W) or (N, K, fc_size)
+        print('ReLUZ', x.shape)
 
         l, u = self.lower_bound(x), self.upper_bound(x)
 
