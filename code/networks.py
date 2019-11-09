@@ -154,12 +154,13 @@ class LinearZ(nn.Linear):
 
     def forward(self, x):
         # input (N, K, input_size)
+        print(x.shape)
         N, K, input_size = x.shape
         x = x.view(N * K, input_size)
         out = super(LinearZ, self).forward(x).view(N, K, -1)
         out[:, 0, :] += self.bias
 
-        return
+        return out
 
 
 class ConvZ(nn.Conv2d):
@@ -198,29 +199,27 @@ class ReLUZ(nn.Module):
 
     @staticmethod
     def lower_bound(x):
-        return torch.abs(x[:, 0, :, :, :]) - torch.sum(torch.abs(x[:, 1:, :, :, :]), dim=2)
+        return torch.abs(x[:, 0, ...]) - torch.sum(torch.abs(x[:, 1:, ...]), dim=1)
 
     @staticmethod
     def upper_bound(x):
-        return torch.abs(x[:, 0, :,  :, :]) + torch.sum(torch.abs(x[:, 1:, :, :, :]), dim=2)
+        return torch.abs(x[:, 0, ...]) + torch.sum(torch.abs(x[:, 1:, ...]), dim=1)
 
     def weights_init(self):
         # TODO: Initialize weights here
-        for module in self.modules():
-            nn.init.normal_(module.weight, mean=0, std=1)
-            nn.init.constant_(module.bias, 0)
+        nn.init.constant_(self.lambdas, 0.5)
 
     def forward(self, x):
+        # TODO: I don't know if the following is computed in parallel, if written like this
         # input is (N, K, c_in, H, W) or (N, K, fc_size)
-        N, K, _, _, _ = x.shape
 
-        # TODO: I don't know if this is computed in parallel, if written like this
         l, u = self.lower_bound(x), self.upper_bound(x)
 
         # TODO: check if broadcasting of lambdas works as expected
         l_0_u = nn.functional.relu(u) * nn.functional.relu(-l)
         out = nn.functional.relu(l) * x + l_0_u * self.lambdas * x
-        out[:, 0, ...] -= self.lambdas[:, 0, ...] * x / 2
+
+        out[:, 0, ...] -= (self.lambdas * l / 2)[:, 0, ...]
 
         # TODO: this seems wrong
         return extend_Z(out, - self.lambdas * l / 2 * l_0_u)
@@ -230,7 +229,7 @@ class ReLUZConv(ReLUZ):
     def __init__(self, n_channels, height, width):
         super(ReLUZConv, self).__init__()
 
-        self.lambdas = nn.Parameter(torch.ones([1, n_channels, 1, height, width]))
+        self.lambdas = nn.Parameter(torch.ones([1, 1, n_channels, height, width]))
         self.lambdas.requires_grad_()
 
 
