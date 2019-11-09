@@ -6,28 +6,30 @@ import numpy as np
 
 
 def pad_K_dim(x, pad):
+    """
+    Extend the K dimension of input x by pad
+    :param x:
+    :param pad:
+    :return:
+    """
     padding = [0] * len(x.shape) * 2
     padding[-3] = pad
     return nn.functional.pad(x, padding, mode='constant', value=0)
 
 
 def extend_Z(x, vals):
+    """
+    Extend the K dimension of input x by the number of ReLU's put on an affine layer in the original NN and update the
+    values in the K dim by vals. (see j=K+i and j=else in case distinction in 2.2 in project paper).
+    :param x:
+    :param vals:
+    :return:
+    """
     K = x.shape[1]
     pad = np.prod(x.shape[2:])
     x = pad_K_dim(x, pad)
     x[:, K:, ...] = vals
-
     return x
-
-
-class ToZ(nn.Module):
-
-    def __init__(self, eps):
-        super(ToZ, self).__init__()
-        self.eps = eps
-
-    def forward(self, x):
-        return extend_Z(x[:, None, ...], self.eps)
 
 
 class Normalization(nn.Module):
@@ -93,7 +95,11 @@ class Conv(nn.Module):
 
 
 class NNFullyConnectedZ(nn.Module):
-
+    """
+    Copy of Conv Module for the image. This module builds up the corresponding network for the Zonotope. This is done
+    by just replacing all modules by the modules adapted to passing Zonotopes (transformers). We replace ReLU and Linear
+    and introduce a new layer ToZ. Normalization was not replaced as it is a constant operation.
+    """
     def __init__(self, device, input_size, fc_layers, eps):
         super(NNFullyConnectedZ, self).__init__()
 
@@ -112,7 +118,9 @@ class NNFullyConnectedZ(nn.Module):
 
 class NNConvZ(nn.Module):
     """
-    Copy of Conv Module for the image. This module builds up the corresponding network for the Zonotope.
+    Copy of Conv Module for the image. This module builds up the corresponding network for the Zonotope. This is done
+    by just replacing all modules by the modules adapted to passing Zonotopes (transformers). We replace ReLU, Conv2d,
+    Linear and introduce a new layer ToZ. Normalization was not replaced as it is a constant operation.
     """
     def __init__(self, device, input_size, conv_layers, fc_layers, eps, n_class=10):
         super(NNConvZ, self).__init__()
@@ -145,7 +153,25 @@ class NNConvZ(nn.Module):
         return self.layers(x)
 
 
+class ToZ(nn.Module):
+    """
+    This layer takes an input tensor of shape (N, ...) and inserts the K dimension for the initial zonotope of the image
+    with perturbation eps. The output will be (N, K, ...) where K = nr of input nodes (fc_size, height * width).
+    """
+    def __init__(self, eps):
+        super(ToZ, self).__init__()
+        self.eps = eps
+
+    def forward(self, x):
+        return extend_Z(x[:, None, ...], self.eps)
+
+
 class LinearZ(nn.Linear):
+    """
+    This layer replaces the linear layer in the original NN. It does so by computing the original linear layer for each
+    entry in the K dim. This is achieved by treating each entry in the K dim as a seperate member of a batch by folding
+    the K dim into the batch dim. This should leverage PyTorch's parallel computation.
+    """
     def load_state_dict(self, state_dict_in):
         state_dict = collections.OrderedDict([('weight', nn.Parameter(state_dict_in['weight'], requires_grad=False)),
                                               ('bias', nn.Parameter(torch.tensor([0.0]), requires_grad=False))])
@@ -164,6 +190,11 @@ class LinearZ(nn.Linear):
 
 
 class ConvZ(nn.Conv2d):
+    """
+    This layer replaces the conv2d layer in the original NN. It does so by computing the original conv2d layer for each
+    entry in the K dim. This is achieved by treating each entry in the K dim as a seperate member of a batch by folding
+    the K dim into the batch dim. This should leverage PyTorch's parallel computation.
+    """
     def load_state_dict(self, state_dict_in):
         state_dict = collections.OrderedDict([('weight', nn.Parameter(state_dict_in['weight'], requires_grad=False)),
                                               ('bias', nn.Parameter(torch.tensor([0.0]), requires_grad=False))])
@@ -171,12 +202,6 @@ class ConvZ(nn.Conv2d):
         self.conv2d.load_state_dict(state_dict)
 
     def forward(self, x):
-        # TODO: check this
-        # input is (N, K, c_in, H, W) want to apply same conv2 for each k in range(K)
-        # easy solution: just fold all K in batch dimension, and leverage pytorch's threaded computation of multiple
-        # batch members. Btw in our setting, we always assume N=1.
-        # We are essentially treating each epsilon layer as an image. However, do not treat these as batch members, as
-        # we need to increase K in the ReLU
         # TODO: check whether we really need to fold in *and* out, can't we do all of this in the batch dimension?
 
         N, K, c_in, H, W = x.shape
@@ -192,18 +217,26 @@ class ConvZ(nn.Conv2d):
 
 
 class ReLUZ(nn.Module):
+    """
+    This layer replaces the ReLU layer. Contrarily, to the ReLU layer it has learnable parameters (lambdas) such that
+    we need to subclass it for the proper definition of lambdas.shape depending on whether it connects to a LinearZ or
+    to a ConvZ.
 
+    ReLUZ extends the K dimension. I don't know if we can bound the behaviour because especially in the ReLUZConv case
+    this can lead to extremely large K dim sizes. On the other hand, I don't know how much of a computational burden
+    this is.
+    """
     def __init__(self):
         super(ReLUZ, self).__init__()
         self.relu = nn.ReLU()
 
     @staticmethod
     def lower_bound(x):
-        return torch.abs(x[:, 0, ...]) - torch.sum(torch.abs(x[:, 1:, ...]), dim=1)
+        return x[:, 0, ...] - torch.sum(torch.abs(x[:, 1:, ...]), dim=1)
 
     @staticmethod
     def upper_bound(x):
-        return torch.abs(x[:, 0, ...]) + torch.sum(torch.abs(x[:, 1:, ...]), dim=1)
+        return x[:, 0, ...] + torch.sum(torch.abs(x[:, 1:, ...]), dim=1)
 
     def weights_init(self):
         # TODO: Initialize weights here
@@ -222,7 +255,6 @@ class ReLUZ(nn.Module):
 
         out[:, 0, ...] -= (self.lambdas * l / 2)[:, 0, ...]
 
-        # TODO: this seems wrong
         return extend_Z(out, - self.lambdas * l / 2 * l_0_u)
 
 
