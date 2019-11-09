@@ -2,6 +2,32 @@ import torch
 import torch.nn as nn
 import collections
 from torch.nn.modules.flatten import Flatten
+import numpy as np
+
+
+def pad_K_dim(x, pad):
+    padding = [0] * (len(x.shape) * 2 + 2)
+    padding[-3] = pad
+    return nn.functional.pad(x[:, None, ...], padding, mode='constant', value=0)
+
+
+def extend_Z(x, vals):
+    K = x.shape[1]
+    pad = np.prod(x.shape[2:])
+    x = pad_K_dim(x, pad)
+    x[:, K:, ...] = vals
+
+    return x
+
+
+class ToZ(nn.Module):
+
+    def __init__(self, eps):
+        super(ToZ, self).__init__()
+        self.eps = eps
+
+    def forward(self, x):
+        return extend_Z(x, self.eps)
 
 
 class Normalization(nn.Module):
@@ -13,14 +39,6 @@ class Normalization(nn.Module):
 
     def forward(self, x):
         return (x - self.mean) / self.sigma
-
-
-class NormalizationZ(Normalization):
-
-    def __init__(self, device):
-        super(Normalization, self).__init__()
-        self.mean = torch.FloatTensor([0.1307]).view((1, 1, 1, 1, 1)).to(device)
-        self.sigma = torch.FloatTensor([0.3081]).view((1, 1, 1, 1, 1)).to(device)
 
 
 class FullyConnected(nn.Module):
@@ -76,10 +94,10 @@ class Conv(nn.Module):
 
 class NNFullyConnectedZ(nn.Module):
 
-    def __init__(self, device, input_size, fc_layers):
+    def __init__(self, device, input_size, fc_layers, eps):
         super(NNFullyConnectedZ, self).__init__()
 
-        layers = [Normalization(device), Flatten(start_dim=2)]
+        layers = [Normalization(device), ToZ(eps), Flatten(start_dim=2)]
         prev_fc_size = input_size * input_size
         for i, fc_size in enumerate(fc_layers):
             layers += [LinearZ(prev_fc_size, fc_size)]
@@ -96,13 +114,13 @@ class NNConvZ(nn.Module):
     """
     Copy of Conv Module for the image. This module builds up the corresponding network for the Zonotope.
     """
-    def __init__(self, device, input_size, conv_layers, fc_layers, n_class=10):
+    def __init__(self, device, input_size, conv_layers, fc_layers, eps, n_class=10):
         super(NNConvZ, self).__init__()
 
         self.input_size = input_size
         self.n_class = n_class
 
-        layers = [Normalization(device)]
+        layers = [Normalization(device), ToZ(eps)]
         prev_channels = 1
         height = width = input_size
 
@@ -174,6 +192,10 @@ class ConvZ(nn.Conv2d):
 
 class ReLUZ(nn.Module):
 
+    def __init__(self):
+        super(ReLUZ, self).__init__()
+        self.relu = nn.ReLU()
+
     @staticmethod
     def lower_bound(x):
         return torch.abs(x[:, 0, :, :, :]) - torch.sum(torch.abs(x[:, 1:, :, :, :]), dim=2)
@@ -188,6 +210,21 @@ class ReLUZ(nn.Module):
             nn.init.normal_(module.weight, mean=0, std=1)
             nn.init.constant_(module.bias, 0)
 
+    def forward(self, x):
+        # input is (N, K, c_in, H, W) or (N, K, fc_size)
+        N, K, _, _, _ = x.shape
+
+        # TODO: I don't know if this is computed in parallel, if written like this
+        l, u = self.lower_bound(x), self.upper_bound(x)
+
+        # TODO: check if broadcasting of lambdas works as expected
+        l_0_u = nn.functional.relu(u) * nn.functional.relu(-l)
+        out = nn.functional.relu(l) * x + l_0_u * self.lambdas * x
+        out[:, 0, ...] -= self.lambdas[:, 0, ...] * x / 2
+
+        # TODO: this seems wrong
+        return extend_Z(out, - self.lambdas * l / 2 * l_0_u)
+
 
 class ReLUZConv(ReLUZ):
     def __init__(self, n_channels, height, width):
@@ -196,26 +233,6 @@ class ReLUZConv(ReLUZ):
         self.lambdas = nn.Parameter(torch.ones([1, n_channels, 1, height, width]))
         self.lambdas.requires_grad_()
 
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        # input is (N, K, c_in, H, W)
-        N, K, c_in, H, W = x.shape
-
-        # TODO: I don't know if this is computed in parallel, if written like this
-        l, u = self.lower_bound(x), self.upper_bound(x)
-
-        # TODO: check if broadcasting of lambdas works as expected
-        l_0_u = nn.functional.relu(u) * nn.functional.relu(-l)
-        out = nn.functional.relu(l) * x + l_0_u * self.lambdas * x
-        out[:, 0, :, :, :] -= self.lambdas[:, 0, :, :, :] * x / 2
-
-        out = nn.functional.pad(input=out, pad=(0, 0, 0, W * H, 0, 0, 0, 0, 0, 0), mode='constant', value=0)
-
-        out[:, K:, :, :, :] = - self.lambdas * l / 2 * l_0_u
-
-        return out
-
 
 class ReLUZLinear(ReLUZ):
     def __init__(self, fc_size):
@@ -223,28 +240,5 @@ class ReLUZLinear(ReLUZ):
 
         self.lambdas = nn.Parameter(torch.ones([1, 1, fc_size]))
         self.lambdas.requires_grad_()
-
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        # input is (N, K, fc_size)
-        N, K, fc_size = x.shape
-
-        # TODO: I don't know if this is computed in parallel, if written like this
-        l, u = self.lower_bound(x), self.upper_bound(x)
-
-        # TODO: check if broadcasting of lambdas works as expected
-        l_0_u = nn.functional.relu(u) * nn.functional.relu(-l)
-        out = nn.functional.relu(l) * x + l_0_u * self.lambdas * x
-        out[:, :, 0] -= self.lambdas[:, :, 0] * x / 2
-
-        fc_size = x[1]
-        K = x.shape[2]
-        out = nn.functional.pad(input=out, pad=(0, 0, 0, fc_size, 0, 0), mode='constant', value=0)
-
-        out[:, K:, :] = - self.lambdas * l / 2 * l_0_u
-
-        return out
-
 
 

@@ -6,7 +6,8 @@ DEVICE = 'cpu'
 INPUT_SIZE = 28
 
 
-def analyze(net, inputs, eps, true_label):
+def analyze(net, inputs, true_label):
+    net(inputs)
     return 0
 
 
@@ -28,7 +29,7 @@ def main():
 
     if args.net == 'fc1':
         net = FullyConnected(DEVICE, INPUT_SIZE, [100, 10]).to(DEVICE)
-        netZ = NNFullyConnectedZ(DEVICE, INPUT_SIZE, [100, 10]).to(DEVICE)
+        netZ = NNFullyConnectedZ(DEVICE, INPUT_SIZE, [100, 10], eps).to(DEVICE)
     elif args.net == 'fc2':
         net = FullyConnected(DEVICE, INPUT_SIZE, [50, 50, 10]).to(DEVICE)
     elif args.net == 'fc3':
@@ -56,7 +57,7 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(net, inputs, eps, true_label):
+    if analyze(netZ, inputs, true_label):
         print('verified')
     else:
         print('not verified')
