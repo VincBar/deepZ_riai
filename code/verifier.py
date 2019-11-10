@@ -1,53 +1,63 @@
 import argparse
 import torch
 from networks import FullyConnected, Conv, NNFullyConnectedZ, PairwiseLoss, GlobalLoss
-import numpy as np
+from torch.utils.tensorboard import SummaryWriter
+from time import strftime, gmtime
 from collections import OrderedDict
 
 DEVICE = 'cpu'
 INPUT_SIZE = 28
 
 
-def analyze(net, inputs, true_label, pairwise=True):
+def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
 
+    # TODO: think hard about this one, we want to avoid local minima
     optimizer = torch.optim.Adam(net.parameters(), lr=0.0001)
 
     if pairwise:
         trained_digits = non_verified_digits = set(range(10)) - {true_label}
         losses = [PairwiseLoss(net, trained_digit=i) for i in trained_digits]
 
-        # TODO: think hard about this one, we want to avoid local minima
-
         for i in non_verified_digits:
             # initialize lambdas, TODO: do we restart from scratch for each digit?
             net.initialize()
 
-            not_verified = True
-            while not_verified:
-                net.zero_grad()
-                lss = losses[i](inputs)
-                lss.backward()
-                optimizer.step()
+            writer = None
+            if tensorboard:
+                writer = SummaryWriter('runs/pairwise_' + strftime("%Y-%m-%d-%H_%M_%S", gmtime()) + 'digit' + str(i))
 
-                if - lss > 0:
-                    not_verified = False
+            run_optimization(net, inputs, losses[i], optimizer, writer=writer)
             non_verified_digits -= {i}
 
     else:
         loss = GlobalLoss(net)
         net.initialize()
 
-        not_verified = True
-        while not_verified:
-            net.zero_grad()
-            lss = loss(inputs)
-            lss.backward()
-            optimizer.step()
+        writer = None
+        if tensorboard:
+            writer = SummaryWriter('runs/global_' + strftime("%Y-%m-%d-%H_%M_%S", gmtime()))
 
-            lower_bound = - lss
+        run_optimization(net, inputs, loss, optimizer, writer=writer)
 
-            if lower_bound > 0:
-                not_verified = False
+    return 1
+
+
+def run_optimization(net, inputs, loss, optimizer, writer=None):
+    not_verified = True
+    counter = 0
+
+    while not_verified:
+        counter += 1
+        net.zero_grad()
+        lss = loss(inputs)
+        lss.backward()
+        optimizer.step()
+
+        if writer is not None:
+            writer.add_scalar('training loss', lss, counter)
+
+        if - lss > 0:
+            not_verified = False
 
     return 1
 

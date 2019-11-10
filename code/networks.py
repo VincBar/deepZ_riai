@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import collections
 from torch.nn.modules.flatten import Flatten
 import numpy as np
 
@@ -234,7 +233,7 @@ class EndLayerZ(nn.Module):
     def forward(self, x):
         N, K, size = x.shape
 
-        out = torch.empty([N, K, size])
+        out = torch.empty([N, size])
         for i in range(size):
             if i == self.target:
                 continue
@@ -296,7 +295,7 @@ class PairwiseLoss(nn.Module):
         self.trained_digit = trained_digit
 
     def forward(self, x):
-        return - self.net(x)[self.trained_digit]
+        return - self.net(x)[..., self.trained_digit]
 
 
 class GlobalLoss(nn.Module):
@@ -305,4 +304,4 @@ class GlobalLoss(nn.Module):
         self.net = net
 
     def forward(self, x):
-        return - torch.sum(self.net(x))
+        return - torch.sum(self.net(x), dim=1)
