@@ -5,6 +5,14 @@ from torch.nn.modules.flatten import Flatten
 import numpy as np
 
 
+def lower_bound(x):
+    return x[:, 0, ...] - torch.sum(torch.abs(x[:, 1:, ...]), dim=1)
+
+
+def upper_bound(x):
+    return x[:, 0, ...] + torch.sum(torch.abs(x[:, 1:, ...]), dim=1)
+
+
 def pad_K_dim(x, pad):
     """
     Extend the K dimension of input x by pad
@@ -107,7 +115,7 @@ class NNFullyConnectedZ(ZModule):
     by just replacing all modules by the modules adapted to passing Zonotopes (transformers). We replace ReLU and Linear
     and introduce a new layer ToZ. Normalization was not replaced as it is a constant operation.
     """
-    def __init__(self, device, input_size, fc_layers, eps):
+    def __init__(self, device, input_size, fc_layers, eps, target):
         super(NNFullyConnectedZ, self).__init__()
 
         layers = [Normalization(device), ToZ(eps), Flatten(start_dim=2)]
@@ -117,6 +125,7 @@ class NNFullyConnectedZ(ZModule):
             if i + 1 < len(fc_layers):
                 layers += [ReLUZLinear(fc_size)]
             prev_fc_size = fc_size
+        layers += [EndLayerZ(target)]
         self.layers = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -129,7 +138,7 @@ class NNConvZ(ZModule):
     by just replacing all modules by the modules adapted to passing Zonotopes (transformers). We replace ReLU, Conv2d,
     Linear and introduce a new layer ToZ. Normalization was not replaced as it is a constant operation.
     """
-    def __init__(self, device, input_size, conv_layers, fc_layers, eps, n_class=10):
+    def __init__(self, device, input_size, conv_layers, fc_layers, eps, target, n_class=10):
         super(NNConvZ, self).__init__()
 
         self.input_size = input_size
@@ -154,6 +163,7 @@ class NNConvZ(ZModule):
             if i + 1 < len(fc_layers):
                 layers += [ReLUZLinear(fc_size)]
             prev_fc_size = fc_size
+        layers += [EndLayerZ(target)]
         self.layers = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -179,12 +189,6 @@ class LinearZ(nn.Linear):
     entry in the K dim. This is achieved by treating each entry in the K dim as a seperate member of a batch by folding
     the K dim into the batch dim. This should leverage PyTorch's parallel computation.
     """
-    def load_state_dict(self, state_dict_in):
-        print('called')
-        state_dict = collections.OrderedDict([('weight', nn.Parameter(state_dict_in['weight'], requires_grad=False)),
-                                              ('bias', nn.Parameter(torch.tensor([0.0]), requires_grad=False))])
-        self.bias = state_dict_in['bias']
-        self.layer.load_state_dict(state_dict)
 
     def forward(self, x):
         # input (N, K, input_size)
@@ -202,11 +206,6 @@ class ConvZ(nn.Conv2d):
     entry in the K dim. This is achieved by treating each entry in the K dim as a seperate member of a batch by folding
     the K dim into the batch dim. This should leverage PyTorch's parallel computation.
     """
-    def load_state_dict(self, state_dict_in):
-        state_dict = collections.OrderedDict([('weight', nn.Parameter(state_dict_in['weight'], requires_grad=False)),
-                                              ('bias', nn.Parameter(torch.tensor([0.0]), requires_grad=False))])
-        self.bias = state_dict_in['bias']
-        self.conv2d.load_state_dict(state_dict)
 
     def forward(self, x):
         # TODO: check whether we really need to fold in *and* out, can't we do all of this in the batch dimension?
@@ -219,6 +218,28 @@ class ConvZ(nn.Conv2d):
         NK, c_out, H_out, W_out = out.shape
         out = out.view(N, K, c_out, H_out, W_out)
         out[:, 0, :, :, :] += self.bias
+
+        return out
+
+
+class EndLayerZ(nn.Module):
+    """
+    This layer computes the difference between the pseudo-probability outputs for all digits and the target digit.
+    """
+
+    def __init__(self, target):
+        super(EndLayerZ, self).__init__()
+        self.target = target
+
+    def forward(self, x):
+        N, K, size = x.shape
+
+        out = torch.empty([N, K, size])
+        for i in range(size):
+            if i == self.target:
+                continue
+
+            out[..., i] = lower_bound(x[..., self.target] - x[..., i])
 
         return out
 
@@ -237,19 +258,11 @@ class ReLUZ(nn.Module):
         super(ReLUZ, self).__init__()
         self.relu = nn.ReLU()
 
-    @staticmethod
-    def lower_bound(x):
-        return x[:, 0, ...] - torch.sum(torch.abs(x[:, 1:, ...]), dim=1)
-
-    @staticmethod
-    def upper_bound(x):
-        return x[:, 0, ...] + torch.sum(torch.abs(x[:, 1:, ...]), dim=1)
-
     def forward(self, x):
         # TODO: I don't know if the following is computed in parallel, if written like this
         # input is (N, K, c_in, H, W) or (N, K, fc_size)
 
-        l, u = self.lower_bound(x), self.upper_bound(x)
+        l, u = lower_bound(x), upper_bound(x)
 
         # TODO: check if broadcasting of lambdas works as expected
         l_0_u = nn.functional.relu(u) * nn.functional.relu(-l)
@@ -276,3 +289,20 @@ class ReLUZLinear(ReLUZ):
         self.lambdas.requires_grad_()
 
 
+class PairwiseLoss(nn.Module):
+    def __init__(self, net, trained_digit):
+        super(PairwiseLoss, self).__init__()
+        self.net = net
+        self.trained_digit = trained_digit
+
+    def forward(self, x):
+        return - self.net(x)[self.trained_digit]
+
+
+class GlobalLoss(nn.Module):
+    def __init__(self, net):
+        super(GlobalLoss, self).__init__()
+        self.net = net
+
+    def forward(self, x):
+        return - torch.sum(self.net(x))

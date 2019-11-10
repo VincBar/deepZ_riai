@@ -1,6 +1,6 @@
 import argparse
 import torch
-from networks import FullyConnected, Conv, NNFullyConnectedZ
+from networks import FullyConnected, Conv, NNFullyConnectedZ, PairwiseLoss, GlobalLoss
 import numpy as np
 from collections import OrderedDict
 
@@ -8,12 +8,51 @@ DEVICE = 'cpu'
 INPUT_SIZE = 28
 
 
-def analyze(net, inputs, true_label):
-    net(inputs)
-    return 0
+def analyze(net, inputs, true_label, pairwise=True):
+
+    optimizer = torch.optim.Adam(net.parameters(), lr=0.0001)
+
+    if pairwise:
+        trained_digits = non_verified_digits = set(range(10)) - {true_label}
+        losses = [PairwiseLoss(net, trained_digit=i) for i in trained_digits]
+
+        # TODO: think hard about this one, we want to avoid local minima
+
+        for i in non_verified_digits:
+            # initialize lambdas, TODO: do we restart from scratch for each digit?
+            net.initialize()
+
+            not_verified = True
+            while not_verified:
+                net.zero_grad()
+                lss = losses[i](inputs)
+                lss.backward()
+                optimizer.step()
+
+                if - lss > 0:
+                    not_verified = False
+            non_verified_digits -= {i}
+
+    else:
+        loss = GlobalLoss(net)
+        net.initialize()
+
+        not_verified = True
+        while not_verified:
+            net.zero_grad()
+            lss = loss(inputs)
+            lss.backward()
+            optimizer.step()
+
+            lower_bound = - lss
+
+            if lower_bound > 0:
+                not_verified = False
+
+    return 1
 
 
-def load_and_initialize_Z(net, state_dict):
+def load_Z(net, state_dict):
     # there is one layer more in netZ (ToZ), so shift layer names.
     state_dict_shifted = OrderedDict([('layers.' + str(int(key.split('.')[1]) + 1) + '.' + key.split('.')[2],
                                        val.requires_grad_()) for key, val in state_dict.items()])
@@ -30,9 +69,6 @@ def load_and_initialize_Z(net, state_dict):
                 obj = getattr(obj, attr)
 
         obj.requires_grad = False
-
-    # initialize lambdas
-    net.initialize()
 
 
 def main():
@@ -53,7 +89,7 @@ def main():
 
     if args.net == 'fc1':
         net = FullyConnected(DEVICE, INPUT_SIZE, [100, 10]).to(DEVICE)
-        netZ = NNFullyConnectedZ(DEVICE, INPUT_SIZE, [100, 10], eps).to(DEVICE)
+        netZ = NNFullyConnectedZ(DEVICE, INPUT_SIZE, [100, 10], eps, true_label).to(DEVICE)
     elif args.net == 'fc2':
         net = FullyConnected(DEVICE, INPUT_SIZE, [50, 50, 10]).to(DEVICE)
     elif args.net == 'fc3':
@@ -75,7 +111,7 @@ def main():
 
     state_dict = torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE))
     net.load_state_dict(state_dict)
-    load_and_initialize_Z(netZ, state_dict)
+    load_Z(netZ, state_dict)
 
     inputs = torch.FloatTensor(pixel_values).view(1, 1, INPUT_SIZE, INPUT_SIZE).to(DEVICE)
     outs = net(inputs)
