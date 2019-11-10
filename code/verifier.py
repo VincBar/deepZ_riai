@@ -12,11 +12,11 @@ INPUT_SIZE = 28
 def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
 
     # TODO: think hard about this one, we want to avoid local minima
-    optimizer = torch.optim.Adam(net.parameters(), lr=0.0001)
+    optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
 
     if pairwise:
         trained_digits = non_verified_digits = set(range(10)) - {true_label}
-        losses = [PairwiseLoss(net, trained_digit=i) for i in trained_digits]
+        losses = dict([(i, PairwiseLoss(net, trained_digit=i)) for i in trained_digits])
 
         time = strftime("%Y-%m-%d-%H_%M_%S", gmtime())
         while not not non_verified_digits:
@@ -134,7 +134,7 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(netZ, inputs, true_label, pairwise=False):
+    if analyze(netZ, inputs, true_label, pairwise=True):
         print('verified')
     else:
         print('not verified')
