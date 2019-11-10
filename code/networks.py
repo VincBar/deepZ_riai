@@ -29,13 +29,18 @@ def extend_Z(x, vals):
     Extend the K dimension of input x by the number of ReLU's put on an affine layer in the original NN and update the
     values in the K dim by vals. (see j=K+i and j=else in case distinction in 2.2 in project paper).
     :param x:
-    :param vals:
+    :param vals: one-dimensional tensor
     :return:
     """
     K = x.shape[1]
     pad = np.prod(x.shape[2:])
     x = pad_K_dim(x, pad)
-    x[:, K:, ...] = vals
+
+    if isinstance(vals, float):
+        vals *= torch.ones(pad)
+
+    # TODO: check this!!
+    x[:, K:, ...] = torch.diagflat(vals).view([1, pad] + list(x.shape[2:]))
     return x
 
 
@@ -233,7 +238,7 @@ class EndLayerZ(nn.Module):
     def forward(self, x):
         N, K, size = x.shape
 
-        out = torch.empty([N, size])
+        out = torch.zeros([N, size])
         for i in range(size):
             if i == self.target:
                 continue
@@ -262,14 +267,14 @@ class ReLUZ(nn.Module):
         # input is (N, K, c_in, H, W) or (N, K, fc_size)
 
         l, u = lower_bound(x), upper_bound(x)
+        _l = l.new(np.heaviside(l.numpy(), 0))
+        l_0_u = u.new(np.heaviside(u.numpy(), 0)) * l.new(np.heaviside((-l).numpy(), 0))
 
         # TODO: check if broadcasting of lambdas works as expected
-        l_0_u = nn.functional.relu(u) * nn.functional.relu(-l)
-        out = nn.functional.relu(l) * x + l_0_u * self.lambdas * x
-
+        out = _l * x + l_0_u * self.lambdas * x
         out[:, 0, ...] -= (self.lambdas * l / 2)[:, 0, ...]
 
-        return extend_Z(out, - self.lambdas * l / 2 * l_0_u)
+        return extend_Z(out, (- self.lambdas * l / 2 * l_0_u).flatten(start_dim=0))
 
 
 class ReLUZConv(ReLUZ):

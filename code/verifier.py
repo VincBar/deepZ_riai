@@ -18,15 +18,19 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
         trained_digits = non_verified_digits = set(range(10)) - {true_label}
         losses = [PairwiseLoss(net, trained_digit=i) for i in trained_digits]
 
-        for i in non_verified_digits:
-            # initialize lambdas, TODO: do we restart from scratch for each digit?
+        time = strftime("%Y-%m-%d-%H_%M_%S", gmtime())
+        while not not non_verified_digits:
+            i = list(non_verified_digits)[0]
+
+            # initialize lambdas,
+            # TODO: do we restart from scratch for each digit? we could try warm starting, maybe for 'similar' digits
             net.initialize()
 
             writer = None
             if tensorboard:
-                writer = SummaryWriter('runs/pairwise_' + strftime("%Y-%m-%d-%H_%M_%S", gmtime()) + 'digit' + str(i))
+                writer = SummaryWriter('../runs/pairwise_' + time + '_digit' + str(i))
 
-            run_optimization(net, inputs, losses[i], optimizer, writer=writer)
+            res = run_optimization(net, inputs, losses[i], optimizer, writer=writer)
             non_verified_digits -= {i}
 
     else:
@@ -35,11 +39,11 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
 
         writer = None
         if tensorboard:
-            writer = SummaryWriter('runs/global_' + strftime("%Y-%m-%d-%H_%M_%S", gmtime()))
+            writer = SummaryWriter('../runs/global_' + strftime("%Y-%m-%d-%H-%M-%S", gmtime()))
 
-        run_optimization(net, inputs, loss, optimizer, writer=writer)
+        res = run_optimization(net, inputs, loss, optimizer, writer=writer)
 
-    return 1
+    return res
 
 
 def run_optimization(net, inputs, loss, optimizer, writer=None):
@@ -68,9 +72,11 @@ def load_Z(net, state_dict):
                                        val.requires_grad_()) for key, val in state_dict.items()])
     net.load_state_dict(state_dict_shifted, strict=False)
 
+    # TODO: check that weights are indeed frozen
     # Freeze weights and biases
     for param in state_dict_shifted.keys():
         obj = net
+        # get weights
         for attr in param.split('.'):
             try:
                 attr = int(attr)
@@ -128,7 +134,7 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(netZ, inputs, true_label):
+    if analyze(netZ, inputs, true_label, pairwise=False):
         print('verified')
     else:
         print('not verified')
