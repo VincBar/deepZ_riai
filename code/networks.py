@@ -35,7 +35,6 @@ def extend_Z(x, vals):
     K = x.shape[1]
     pad = np.prod(x.shape[2:])
     x = pad_K_dim(x, pad)
-
     if isinstance(vals, float):
         vals *= torch.ones(pad)
 
@@ -153,7 +152,7 @@ class NNConvZ(ZModule):
         height = width = input_size
 
         for n_channels, kernel_size, stride, padding in conv_layers:
-            height, width = self._compute_resulting_height_width(height, width, stride, padding)
+            height, width = self._compute_resulting_height_width(height, width, kernel_size, stride, 2*padding)
             layers += [
                 ConvZ(prev_channels, n_channels, kernel_size, stride=stride, padding=padding),
                 ReLUZConv(n_channels, height, width),
@@ -169,6 +168,13 @@ class NNConvZ(ZModule):
             prev_fc_size = fc_size
         layers += [EndLayerZ(target)]
         self.layers = nn.Sequential(*layers)
+
+    @staticmethod
+    def _compute_resulting_height_width(height, width, kernel_size, stride, padding):
+        height = (height - kernel_size + padding + stride) // stride
+        width = (width - kernel_size + padding + stride) // stride
+
+        return height, width
 
     def forward(self, x):
         return self.layers(x)
@@ -199,7 +205,7 @@ class LinearZ(nn.Linear):
         N, K, input_size = x.shape
         x = x.view(N * K, input_size)
         out = super(LinearZ, self).forward(x).view(N, K, -1)
-        out[:, 0, :] += self.bias
+        out[:, 0, :] += self.bias[None, :]
 
         return out
 
@@ -221,7 +227,7 @@ class ConvZ(nn.Conv2d):
 
         NK, c_out, H_out, W_out = out.shape
         out = out.view(N, K, c_out, H_out, W_out)
-        out[:, 0, :, :, :] += self.bias
+        out[:, 0, :, :, :] += self.bias[None, :, None, None]
 
         return out
 
@@ -267,8 +273,12 @@ class ReLUZ(nn.Module):
         # input is (N, K, c_in, H, W) or (N, K, fc_size)
 
         l, u = lower_bound(x), upper_bound(x)
-        _l = l.new(np.heaviside(l.numpy(), 0))
-        l_0_u = u.new(np.heaviside(u.numpy(), 0)) * l.new(np.heaviside((-l).numpy(), 0))
+
+        # TODO: implement proper step function
+        heaviside = lambda a: torch.ceil(torch.sigmoid(a))
+
+        _l = heaviside(l)[:, None, ...]
+        l_0_u = (heaviside(u) * heaviside(-l))[:, None, ...]
 
         # TODO: check if broadcasting of lambdas works as expected
         out = _l * x + l_0_u * self.lambdas * x

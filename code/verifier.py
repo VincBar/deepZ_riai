@@ -1,6 +1,6 @@
 import argparse
 import torch
-from networks import FullyConnected, Conv, NNFullyConnectedZ, PairwiseLoss, GlobalLoss
+from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss
 from torch.utils.tensorboard import SummaryWriter
 from time import strftime, gmtime
 from collections import OrderedDict
@@ -13,6 +13,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
 
     # TODO: think hard about this one, we want to avoid local minima
     optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
+    inputs.requires_grad_()
 
     if pairwise:
         trained_digits = non_verified_digits = set(range(10)) - {true_label}
@@ -116,6 +117,7 @@ def main():
         net = FullyConnected(DEVICE, INPUT_SIZE, [400, 200, 100, 100, 10]).to(DEVICE)
     elif args.net == 'conv1':
         net = Conv(DEVICE, INPUT_SIZE, [(32, 4, 2, 1)], [100, 10], 10).to(DEVICE)
+        netZ = NNConvZ(DEVICE, INPUT_SIZE, [(32, 4, 2, 1)], [100, 10], eps, true_label, 10).to(DEVICE)
     elif args.net == 'conv2':
         net = Conv(DEVICE, INPUT_SIZE, [(32, 4, 2, 1), (64, 4, 2, 1)], [100, 10], 10).to(DEVICE)
     elif args.net == 'conv3':
