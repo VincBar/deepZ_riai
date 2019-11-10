@@ -1,6 +1,8 @@
 import argparse
 import torch
 from networks import FullyConnected, Conv, NNFullyConnectedZ
+import numpy as np
+from collections import OrderedDict
 
 DEVICE = 'cpu'
 INPUT_SIZE = 28
@@ -9,6 +11,28 @@ INPUT_SIZE = 28
 def analyze(net, inputs, true_label):
     net(inputs)
     return 0
+
+
+def load_and_initialize_Z(net, state_dict):
+    # there is one layer more in netZ (ToZ), so shift layer names.
+    state_dict_shifted = OrderedDict([('layers.' + str(int(key.split('.')[1]) + 1) + '.' + key.split('.')[2],
+                                       val.requires_grad_()) for key, val in state_dict.items()])
+    net.load_state_dict(state_dict_shifted, strict=False)
+
+    # Freeze weights and biases
+    for param in state_dict_shifted.keys():
+        obj = net
+        for attr in param.split('.'):
+            try:
+                attr = int(attr)
+                obj = obj[attr]
+            except ValueError:
+                obj = getattr(obj, attr)
+
+        obj.requires_grad = False
+
+    # initialize lambdas
+    net.initialize()
 
 
 def main():
@@ -49,8 +73,9 @@ def main():
     elif args.net == 'conv5':
         net = Conv(DEVICE, INPUT_SIZE, [(16, 3, 1, 1), (32, 4, 2, 1), (64, 4, 2, 1)], [100, 100, 10], 10).to(DEVICE)
 
-    net.load_state_dict(torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE)))
-    netZ.load_state_dict(torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE)), strict=False)
+    state_dict = torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE))
+    net.load_state_dict(state_dict)
+    load_and_initialize_Z(netZ, state_dict)
 
     inputs = torch.FloatTensor(pixel_values).view(1, 1, INPUT_SIZE, INPUT_SIZE).to(DEVICE)
     outs = net(inputs)

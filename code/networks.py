@@ -94,9 +94,16 @@ class Conv(nn.Module):
         return self.layers(x)
 
 
-class NNFullyConnectedZ(nn.Module):
+class ZModule(nn.Module):
+    def initialize(self):
+        for layer in self.layers:
+            if isinstance(layer, ReLUZ):
+                layer.lambdas = nn.init.constant_(layer.lambdas, 0.5)
+
+
+class NNFullyConnectedZ(ZModule):
     """
-    Copy of Conv Module for the image. This module builds up the corresponding network for the Zonotope. This is done
+    Copy of FullyConnected Module for the image. This module builds up the corresponding network for the Zonotope. This is done
     by just replacing all modules by the modules adapted to passing Zonotopes (transformers). We replace ReLU and Linear
     and introduce a new layer ToZ. Normalization was not replaced as it is a constant operation.
     """
@@ -116,7 +123,7 @@ class NNFullyConnectedZ(nn.Module):
         return self.layers(x)
 
 
-class NNConvZ(nn.Module):
+class NNConvZ(ZModule):
     """
     Copy of Conv Module for the image. This module builds up the corresponding network for the Zonotope. This is done
     by just replacing all modules by the modules adapted to passing Zonotopes (transformers). We replace ReLU, Conv2d,
@@ -173,6 +180,7 @@ class LinearZ(nn.Linear):
     the K dim into the batch dim. This should leverage PyTorch's parallel computation.
     """
     def load_state_dict(self, state_dict_in):
+        print('called')
         state_dict = collections.OrderedDict([('weight', nn.Parameter(state_dict_in['weight'], requires_grad=False)),
                                               ('bias', nn.Parameter(torch.tensor([0.0]), requires_grad=False))])
         self.bias = state_dict_in['bias']
@@ -180,7 +188,6 @@ class LinearZ(nn.Linear):
 
     def forward(self, x):
         # input (N, K, input_size)
-        print('LinearZ', x.shape)
         N, K, input_size = x.shape
         x = x.view(N * K, input_size)
         out = super(LinearZ, self).forward(x).view(N, K, -1)
@@ -238,14 +245,9 @@ class ReLUZ(nn.Module):
     def upper_bound(x):
         return x[:, 0, ...] + torch.sum(torch.abs(x[:, 1:, ...]), dim=1)
 
-    def weights_init(self):
-        # TODO: Initialize weights here
-        nn.init.constant_(self.lambdas, 0.5)
-
     def forward(self, x):
         # TODO: I don't know if the following is computed in parallel, if written like this
         # input is (N, K, c_in, H, W) or (N, K, fc_size)
-        print('ReLUZ', x.shape)
 
         l, u = self.lower_bound(x), self.upper_bound(x)
 
