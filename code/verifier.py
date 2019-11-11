@@ -1,6 +1,6 @@
 import argparse
 import torch
-from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss
+from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, get_child
 from time import strftime, gmtime
 from collections import OrderedDict
 
@@ -71,23 +71,16 @@ def run_optimization(net, inputs, loss, optimizer, writer=None):
 
 def load_Z(net, state_dict):
     # there is one layer more in netZ (ToZ), so shift layer names.
-    state_dict_shifted = OrderedDict([('layers.' + str(int(key.split('.')[1]) + 1) + '.' + key.split('.')[2],
-                                       val.requires_grad_()) for key, val in state_dict.items()])
+    state_dict_shifted = OrderedDict([])
+    for key, val in state_dict.items():
+        pre, nr, param = key.split('.')
+        nr = str(int(nr) + 1)
+        if param == 'bias':
+            param = 'zbias'
+
+        state_dict_shifted['.'.join([pre, nr, param])] = val.requires_grad_(False)
+
     net.load_state_dict(state_dict_shifted, strict=False)
-
-    # TODO: check that weights are indeed frozen
-    # Freeze weights and biases
-    for param in state_dict_shifted.keys():
-        obj = net
-        # get weights
-        for attr in param.split('.'):
-            try:
-                attr = int(attr)
-                obj = obj[attr]
-            except ValueError:
-                obj = getattr(obj, attr)
-
-        obj.requires_grad = False
 
 
 def main():
@@ -111,6 +104,7 @@ def main():
         netZ = NNFullyConnectedZ(DEVICE, INPUT_SIZE, [100, 10], eps, true_label).to(DEVICE)
     elif args.net == 'fc2':
         net = FullyConnected(DEVICE, INPUT_SIZE, [50, 50, 10]).to(DEVICE)
+        netZ = NNFullyConnectedZ(DEVICE, INPUT_SIZE, [50, 50, 10], eps, true_label).to(DEVICE)
     elif args.net == 'fc3':
         net = FullyConnected(DEVICE, INPUT_SIZE, [100, 100, 10]).to(DEVICE)
     elif args.net == 'fc4':
@@ -138,7 +132,7 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(netZ, inputs, true_label, pairwise=False):
+    if analyze(netZ, inputs, true_label, pairwise=True):
         print('verified')
     else:
         print('not verified')
