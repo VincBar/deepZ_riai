@@ -26,6 +26,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
 
             # initialize lambdas,
             # TODO: do we restart from scratch for each digit? we could try warm starting, maybe for 'similar' digits
+            # TODO: search good initialization
             net.initialize()
 
             writer = None

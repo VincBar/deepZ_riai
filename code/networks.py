@@ -85,10 +85,7 @@ class Conv(nn.Module):
         img_dim = input_size
 
         for n_channels, kernel_size, stride, padding in conv_layers:
-            layers += [
-                nn.Conv2d(prev_channels, n_channels, kernel_size, stride=stride, padding=padding),
-                nn.ReLU(),
-            ]
+            layers += [nn.Conv2d(prev_channels, n_channels, kernel_size, stride=stride, padding=padding), nn.ReLU(), ]
             prev_channels = n_channels
             img_dim = img_dim // stride
         layers += [Flatten()]
@@ -118,6 +115,7 @@ class NNFullyConnectedZ(ZModule):
     by just replacing all modules by the modules adapted to passing Zonotopes (transformers). We replace ReLU and Linear
     and introduce a new layer ToZ. Normalization was not replaced as it is a constant operation.
     """
+
     def __init__(self, device, input_size, fc_layers, eps, target):
         super(NNFullyConnectedZ, self).__init__()
 
@@ -128,7 +126,7 @@ class NNFullyConnectedZ(ZModule):
             if i + 1 < len(fc_layers):
                 layers += [ReLUZLinear(fc_size)]
             prev_fc_size = fc_size
-        layers += [EndLayerZ(target)]
+        layers += [EndLayerZ(target, prev_fc_size)]
         self.layers = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -141,6 +139,7 @@ class NNConvZ(ZModule):
     by just replacing all modules by the modules adapted to passing Zonotopes (transformers). We replace ReLU, Conv2d,
     Linear and introduce a new layer ToZ. Normalization was not replaced as it is a constant operation.
     """
+
     def __init__(self, device, input_size, conv_layers, fc_layers, eps, target, n_class=10):
         super(NNConvZ, self).__init__()
 
@@ -152,11 +151,9 @@ class NNConvZ(ZModule):
         height = width = input_size
 
         for n_channels, kernel_size, stride, padding in conv_layers:
-            height, width = self._compute_resulting_height_width(height, width, kernel_size, stride, 2*padding)
-            layers += [
-                ConvZ(prev_channels, n_channels, kernel_size, stride=stride, padding=padding),
-                ReLUZConv(n_channels, height, width),
-            ]
+            height, width = self._compute_resulting_height_width(height, width, kernel_size, stride, 2 * padding)
+            layers += [ConvZ(prev_channels, n_channels, kernel_size, stride=stride, padding=padding),
+                       ReLUZConv(n_channels, height, width), ]
             prev_channels = n_channels
         layers += [Flatten(start_dim=2)]
 
@@ -166,7 +163,7 @@ class NNConvZ(ZModule):
             if i + 1 < len(fc_layers):
                 layers += [ReLUZLinear(fc_size)]
             prev_fc_size = fc_size
-        layers += [EndLayerZ(target)]
+        layers += [EndLayerZ(target, prev_fc_size)]
         self.layers = nn.Sequential(*layers)
 
     @staticmethod
@@ -185,6 +182,7 @@ class ToZ(nn.Module):
     This layer takes an input tensor of shape (N, ...) and inserts the K dimension for the initial zonotope of the image
     with perturbation eps. The output will be (N, K, ...) where K = nr of input nodes (fc_size, height * width).
     """
+
     def __init__(self, eps):
         super(ToZ, self).__init__()
         self.eps = eps
@@ -237,21 +235,16 @@ class EndLayerZ(nn.Module):
     This layer computes the difference between the pseudo-probability outputs for all digits and the target digit.
     """
 
-    def __init__(self, target):
+    def __init__(self, target, size):
         super(EndLayerZ, self).__init__()
         self.target = target
 
+        self.weights = torch.zeros([1, size, size])
+        self.weights[0, :, target] = 1
+        self.weights[0, ...] -= torch.diag(torch.ones(size))
+
     def forward(self, x):
-        N, K, size = x.shape
-
-        out = torch.zeros([N, size])
-        for i in range(size):
-            if i == self.target:
-                continue
-
-            out[..., i] = lower_bound(x[..., self.target] - x[..., i])
-
-        return out
+        return lower_bound(torch.einsum('nji, nki -> nkj', [self.weights, x]))
 
 
 class ReLUZ(nn.Module):
@@ -264,6 +257,7 @@ class ReLUZ(nn.Module):
     this can lead to extremely large K dim sizes. On the other hand, I don't know how much of a computational burden
     this is.
     """
+
     def __init__(self):
         super(ReLUZ, self).__init__()
         self.relu = nn.ReLU()
@@ -273,18 +267,18 @@ class ReLUZ(nn.Module):
         # input is (N, K, c_in, H, W) or (N, K, fc_size)
 
         l, u = lower_bound(x), upper_bound(x)
-
-        # TODO: implement proper step function
-        heaviside = lambda a: torch.ceil(torch.sigmoid(a)).type(torch.int)
-
-        _l = heaviside(l)[:, None, ...]
-        l_0_u = (heaviside(u) * heaviside(-l))[:, None, ...]
+        _l = self.heaviside(l)[:, None, ...]
+        l_0_u = (self.heaviside(u) * self.heaviside(-l))[:, None, ...]
 
         # TODO: check if broadcasting of lambdas works as expected
         out = _l * x + l_0_u * self.lambdas * x
         out[:, 0, ...] -= (self.lambdas * l / 2)[:, 0, ...]
 
         return extend_Z(out, (- self.lambdas * l / 2 * l_0_u).flatten(start_dim=0))
+
+    @staticmethod
+    def heaviside(a):
+        return torch.relu(torch.sign(a))
 
 
 class ReLUZConv(ReLUZ):
@@ -310,7 +304,7 @@ class PairwiseLoss(nn.Module):
         self.trained_digit = trained_digit
 
     def forward(self, x):
-        return - self.net(x)[..., self.trained_digit]
+        return - self.net(x)[:, self.trained_digit]
 
 
 class GlobalLoss(nn.Module):
