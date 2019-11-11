@@ -275,7 +275,7 @@ class ReLUZ(nn.Module):
         l, u = lower_bound(x), upper_bound(x)
 
         # TODO: implement proper step function
-        heaviside = lambda a: torch.ceil(torch.sigmoid(a))
+        heaviside = lambda a: torch.ceil(torch.sigmoid(a)).type(torch.int)
 
         _l = heaviside(l)[:, None, ...]
         l_0_u = (heaviside(u) * heaviside(-l))[:, None, ...]

@@ -1,7 +1,6 @@
 import argparse
 import torch
 from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss
-from torch.utils.tensorboard import SummaryWriter
 from time import strftime, gmtime
 from collections import OrderedDict
 
@@ -13,7 +12,6 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
 
     # TODO: think hard about this one, we want to avoid local minima
     optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
-    inputs.requires_grad_()
 
     if pairwise:
         trained_digits = non_verified_digits = set(range(10)) - {true_label}
@@ -29,6 +27,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
 
             writer = None
             if tensorboard:
+                from torch.utils.tensorboard import SummaryWriter
                 writer = SummaryWriter('../runs/pairwise_' + time + '_digit' + str(i))
 
             res = run_optimization(net, inputs, losses[i], optimizer, writer=writer)
@@ -40,6 +39,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
 
         writer = None
         if tensorboard:
+            from torch.utils.tensorboard import SummaryWriter
             writer = SummaryWriter('../runs/global_' + strftime("%Y-%m-%d-%H-%M-%S", gmtime()))
 
         res = run_optimization(net, inputs, loss, optimizer, writer=writer)
@@ -136,7 +136,7 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(netZ, inputs, true_label, pairwise=True):
+    if analyze(netZ, inputs, true_label, pairwise=False):
         print('verified')
     else:
         print('not verified')
