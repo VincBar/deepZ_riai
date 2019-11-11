@@ -13,11 +13,14 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
     # TODO: think hard about this one, we want to avoid local minima
     optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
 
+    if tensorboard:
+        from torch.utils.tensorboard import SummaryWriter
+        time = strftime("%Y-%m-%d-%H_%M_%S", gmtime())
+
     if pairwise:
         trained_digits = non_verified_digits = set(range(10)) - {true_label}
         losses = dict([(i, PairwiseLoss(net, trained_digit=i)) for i in trained_digits])
 
-        time = strftime("%Y-%m-%d-%H_%M_%S", gmtime())
         while not not non_verified_digits:
             i = list(non_verified_digits)[0]
 
@@ -27,7 +30,6 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
 
             writer = None
             if tensorboard:
-                from torch.utils.tensorboard import SummaryWriter
                 writer = SummaryWriter('../runs/pairwise_' + time + '_digit' + str(i))
 
             res = run_optimization(net, inputs, losses[i], optimizer, writer=writer)
@@ -39,8 +41,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
 
         writer = None
         if tensorboard:
-            from torch.utils.tensorboard import SummaryWriter
-            writer = SummaryWriter('../runs/global_' + strftime("%Y-%m-%d-%H-%M-%S", gmtime()))
+            writer = SummaryWriter('../runs/global_' + time)
 
         res = run_optimization(net, inputs, loss, optimizer, writer=writer)
 
