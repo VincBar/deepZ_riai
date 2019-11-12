@@ -1,4 +1,4 @@
-from networks import extend_Z
+from code.networks import extend_Z
 import torch
 
 # Let x the current zonotope. In the conv case x.shape = (K, C, H, W).
@@ -13,8 +13,8 @@ def test():
     c = b.flatten(start_dim=0)
     x_ = extend_Z(x, c)
 
-    print(x_[:, 1, 1, 1])
-    print(b[1, 1, 1])
+    print(x_[:, 1, 2, 1])
+    print(b[1, 2, 1])
 
 
 if __name__ == '__main__':
