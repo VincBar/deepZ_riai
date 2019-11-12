@@ -315,5 +315,5 @@ class GlobalLoss(nn.Module):
 
     def forward(self, x):
         # x = self.net(x)
-        # return 
+        # return
         raise NotImplemented
