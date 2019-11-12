@@ -117,7 +117,7 @@ class ZModule(nn.Module):
         for layer in self.layers:
             if isinstance(layer, ReLUZ):
                 layer.lambdas = nn.init.constant_(layer.lambdas, 0.99)
-                layer.lambdas.requires_grad_()
+                layer.lambdas.requires_grad = True
 
             if isinstance(layer, LinearZ) or isinstance(layer, ConvZ):
                 layer.weight.requires_grad = False
