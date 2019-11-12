@@ -116,16 +116,12 @@ class ZModule(nn.Module):
     def initialize(self):
         for layer in self.layers:
             if isinstance(layer, ReLUZ):
-                layer.lambdas = nn.init.constant_(layer.lambdas, 0.5)
+                layer.lambdas = nn.init.constant_(layer.lambdas, 0.99)
                 layer.lambdas.requires_grad_()
 
-            elif isinstance(layer, ConvZ) or isinstance(layer, LinearZ):
+            if isinstance(layer, LinearZ) or isinstance(layer, ConvZ):
                 layer.weight.requires_grad = False
-
-                layer.bias = nn.init.constant_(layer.bias, 0)
                 layer.bias.requires_grad = False
-
-                layer.zbias.requires_grad = False
 
 
 class NNFullyConnectedZ(ZModule):
@@ -216,13 +212,9 @@ class LinearZ(nn.Linear):
     entry in the K dim. This is achieved by treating each entry in the K dim as a seperate member of a batch by folding
     the K dim into the batch dim. This should leverage PyTorch's parallel computation.
     """
-    def __init__(self, *args, **kwargs):
-        super(LinearZ, self).__init__(*args, **kwargs)
-        self.zbias = nn.Parameter(torch.zeros_like(self.bias, requires_grad=False))
-
     def forward(self, x):
-        out = super(LinearZ, self).forward(x)
-        out[0, :] += self.zbias
+        out = nn.functional.linear(x, self.weight, bias=None)
+        out[0, :] += self.bias
         return out
 
 
@@ -232,13 +224,10 @@ class ConvZ(nn.Conv2d):
     entry in the K dim. This is achieved by treating each entry in the K dim as a seperate member of a batch by folding
     the K dim into the batch dim. This should leverage PyTorch's parallel computation.
     """
-    def __init__(self, *args, **kwargs):
-        super(ConvZ, self).__init__(*args, **kwargs)
-        self.zbias = nn.Parameter(torch.zeros_like(self.bias, requires_grad=False))
 
     def forward(self, x):
-        out = super(ConvZ, self).forward(x)
-        out[0, :, :, :] += self.zbias[:, None, None]
+        out = nn.functional.conv2d(x, weight=self.weight, bias=None, stride=self.stride, padding=self.padding)
+        out[0, :, :, :] += self.bias[:, None, None]
         return out
 
 

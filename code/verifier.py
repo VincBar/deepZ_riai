@@ -75,9 +75,6 @@ def load_Z(net, state_dict):
     for key, val in state_dict.items():
         pre, nr, param = key.split('.')
         nr = str(int(nr) + 1)
-        if param == 'bias':
-            param = 'zbias'
-
         state_dict_shifted['.'.join([pre, nr, param])] = val.requires_grad_(False)
 
     net.load_state_dict(state_dict_shifted, strict=False)
@@ -111,6 +108,7 @@ def main():
         net = FullyConnected(DEVICE, INPUT_SIZE, [100, 100, 100, 10]).to(DEVICE)
     elif args.net == 'fc5':
         net = FullyConnected(DEVICE, INPUT_SIZE, [400, 200, 100, 100, 10]).to(DEVICE)
+        netZ = NNFullyConnectedZ(DEVICE, INPUT_SIZE, [400, 200, 100, 100, 10], eps, true_label).to(DEVICE)
     elif args.net == 'conv1':
         net = Conv(DEVICE, INPUT_SIZE, [(32, 4, 2, 1)], [100, 10], 10).to(DEVICE)
         netZ = NNConvZ(DEVICE, INPUT_SIZE, [(32, 4, 2, 1)], [100, 10], eps, true_label, 10).to(DEVICE)
@@ -122,12 +120,14 @@ def main():
         net = Conv(DEVICE, INPUT_SIZE, [(32, 4, 2, 1), (64, 4, 2, 1)], [100, 100, 10], 10).to(DEVICE)
     elif args.net == 'conv5':
         net = Conv(DEVICE, INPUT_SIZE, [(16, 3, 1, 1), (32, 4, 2, 1), (64, 4, 2, 1)], [100, 100, 10], 10).to(DEVICE)
+        netZ = NNConvZ(DEVICE, INPUT_SIZE, [(16, 3, 1, 1), (32, 4, 2, 1), (64, 4, 2, 1)], [100, 100, 10], eps, true_label,
+                       10).to(DEVICE)
 
     state_dict = torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE))
     net.load_state_dict(state_dict)
     load_Z(netZ, state_dict)
 
-    inputs = torch.FloatTensor(pixel_values).view(1, 1, INPUT_SIZE, INPUT_SIZE).to(DEVICE)
+    inputs = torch.FloatTensor(pixel_values).requires_grad_(False).view(1, 1, INPUT_SIZE, INPUT_SIZE).to(DEVICE)
     outs = net(inputs)
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
