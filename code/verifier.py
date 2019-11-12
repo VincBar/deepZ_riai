@@ -1,5 +1,8 @@
 import argparse
 import torch
+import sys
+sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
+
 from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, get_child
 from time import strftime, gmtime
 from collections import OrderedDict
@@ -31,7 +34,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
 
             writer = None
             if tensorboard:
-                writer = SummaryWriter('../runs/pairwise_' + time + '_digit' + str(i))
+                writer = SummaryWriter('D:/Dokumente/GitHub/runs/pairwise_' + time + '_digit' + str(i))
 
             res = run_optimization(net, inputs, losses[i], optimizer, writer=writer)
             non_verified_digits -= {i}

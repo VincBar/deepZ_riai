@@ -1,5 +1,7 @@
-from code.networks import extend_Z
 import torch
+import sys
+sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
+from networks import extend_Z
 
 # Let x the current zonotope. In the conv case x.shape = (K, C, H, W).
 # Now, we want the tensor cast b with b.shape = (C, H, W) into x tensor c with c.shape = (C * H * W, C, H, W)
@@ -15,8 +17,9 @@ def test():
 
     print(x_[:, 1, 2, 1])
     print(b[1, 2, 1])
-
-
+    x_2=extend_Z(x,b)
+    print(x_2[:,1,2,1])
+    print(x_==x_2)
 if __name__ == '__main__':
     test()
 
