@@ -14,12 +14,13 @@ def test():
     b = torch.arange(27).view((3, 3, 3))
     c = b.flatten(start_dim=0)
     x_ = extend_Z(x, c)
+    x_2=extend_Z(x,b)
 
     print(x_[:, 1, 2, 1])
     print(b[1, 2, 1])
-    x_2=extend_Z(x,b)
-    print(x_2[:,1,2,1])
+
     print(x_==x_2)
+
 if __name__ == '__main__':
     test()
 
