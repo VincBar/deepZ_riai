@@ -274,7 +274,7 @@ class ReLUZ(nn.Module):
         # TODO: check if broadcasting of lambdas works as expected
         # check completed see test_conv_pad
         out = _l * x + l_0_u * self.lambdas * x
-        out[0, ...] -= (self.lambdas * l / 2)[0, ...]
+        out[0, ...] -= _l[0,...]*(self.lambdas * l / 2)[0, ...]
 
         return extend_Z(out, (- self.lambdas * l / 2 * l_0_u))
 
