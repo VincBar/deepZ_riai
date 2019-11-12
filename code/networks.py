@@ -272,13 +272,18 @@ class ReLUZ(nn.Module):
         l_0_u = (self.heaviside(u) * self.heaviside(-l))
 
         # TODO: check if broadcasting of lambdas works as expected
+        # check completed see test_conv_pad
         out = _l * x + l_0_u * self.lambdas * x
         out[0, ...] -= (self.lambdas * l / 2)[0, ...]
 
-        return extend_Z(out, (- self.lambdas * l / 2 * l_0_u).flatten(start_dim=0))
+        return extend_Z(out, (- self.lambdas * l / 2 * l_0_u))
 
     @staticmethod
     def heaviside(a):
+        """
+        :param a: any dimensional pytorch tensor
+        :return: 0,1 identifier if input larger 0
+        """
         return torch.relu(torch.sign(a))
 
 
