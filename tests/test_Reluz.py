@@ -17,11 +17,22 @@ def test():
     x[0,1] = 10
     reluz = ReLUZLinear(fc_size)
     # TODO: ERROR in propagation of RELUZ a_00 should be 0 but is 6, corrected
+    # TODO: ERROR in propagation of RELUZ a_01 should be 10 but is 6, corrected maybe online description is wrong
     x_out=reluz(x)
     print(x_out.shape[0]-K==fc_size)
     # TODO: Currently all lambdas are initialized as one. Maybe the initalization can be learned number specific.
     print(x_out)
 
+    x_true=torch.Tensor([[ 0.0000, 10.0000,  1.5000,  1.5000,  1.5000],
+            [ 0.0000,  1.0000,  1.0000,  1.0000,  1.0000],
+            [ 0.0000,  1.0000,  1.0000,  1.0000,  1.0000],
+            [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
+            [ 0.0000, -0.0000,  0.0000,  0.0000,  0.0000],
+            [ 0.0000,  0.0000,  0.5000,  0.0000,  0.0000],
+            [ 0.0000,  0.0000,  0.0000,  0.5000,  0.0000],
+            [ 0.0000,  0.0000,  0.0000,  0.0000,  0.5000]])
+
+    print(x_out==x_true)
 
 if __name__ == '__main__':
     test()
