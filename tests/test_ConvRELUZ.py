@@ -3,22 +3,29 @@ import sys
 sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
 from networks import ReLUZConv
 
-# Let x be the current zonotope. In the linear case x.shape = (K, fc_size).
-# Now we want to apply the DeepZ relaxation on a linear Layer. In our current approach it should add fc_size parameters
-# to x_out.shape =(K+fc_size,fc_size). This should be improved, to less unecessary memory allocation
+# Let x be the current zonotope. In the conv case x.shape = (K, c,h,w).
+# Now we want to apply the DeepZ relaxation on the convolution layer. In our current approach it should add fc_size parameters
+# to x_out.shape =(K+h*w,c,h,w). This should be improved, to less unecessary memory allocation
 
 
 
 def test():
     K = 3
-    fc_size = 5
-    x = torch.ones((K, fc_size)).double()
-    reluz = ReLUZConv(fc_size)
+    c = 2
+    h = 2
+    w = 2
+    x = (torch.ones((K, c, h , w))).double()
+    x[0,1,0,0]=10
+    x[0,1,0,1]=-10
+    x[1,1,1,0]=2
+    x[2,1,1,0]=-2
+    reluz = ReLUZConv(c,h,w)
     x_out=reluz(x)
-    print(x_out.shape[0]-K==fc_size)
     # TODO: Currently all lambdas are initialized as one. Maybe the initalization can be learned number specific.
     print(x_out)
-
-
+    print(x_out[0,1,...])#=[[10,0],[2.5,1.5]]
+    print(x_out[1,1,...])#=[[1,0],[2,1]]
+    print(x_out[2,1,...])#=[[1,0],[-2,1]]
+    # TODO: Check for lambda not one
 if __name__ == '__main__':
     test()
