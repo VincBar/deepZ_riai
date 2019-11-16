@@ -26,6 +26,15 @@ def test():
     print(x_out[0,1,...])#=[[10,0],[2.5,1.5]]
     print(x_out[1,1,...])#=[[1,0],[2,1]]
     print(x_out[2,1,...])#=[[1,0],[-2,1]]
+
     # TODO: Check for lambda not one
+
+    print(x_out[3,1,...]==torch.Tensor([[0,0],[0,0]]))#=[[0,0],[0,0]]
+    print(x_out[4,1,...]==torch.Tensor([[0,0],[0,0]]))#=[[0,0],[0,0]]
+    print(x_out[5,1,...]==torch.Tensor([[0,0],[0,0]]))#=[[0,0],[0,0]]
+    print(x_out[10, 1, ...] == torch.Tensor([[0, 0], [0, .50]]))
+
+    # TODO: Reduce amount of lambdas necessary
+
 if __name__ == '__main__':
     test()
