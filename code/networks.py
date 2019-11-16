@@ -12,6 +12,14 @@ def upper_bound(x):
     return x[0, ...] + torch.sum(torch.abs(x[1:, ...]), dim=0)
 
 
+def heaviside(a):
+    """
+    :param a: any dimensional pytorch tensor
+    :return: 0,1 identifier if input larger 0
+    """
+    return torch.relu(torch.sign(a))
+
+
 def get_child(param, net, val):
     obj = net
     # get weights
@@ -155,7 +163,7 @@ class NNConvZ(ZModule):
     Linear and introduce a new layer ToZ. Normalization was not replaced as it is a constant operation.
     """
 
-    def __init__(self, device, input_size, conv_layers, fc_layers, eps, target, n_class=10):
+    def __init__(self, device, input_size, conv_layers, fc_layers, n_class=10, eps=0, target=0):
         super(NNConvZ, self).__init__()
 
         self.input_size = input_size
@@ -268,8 +276,8 @@ class ReLUZ(nn.Module):
         # input is (K, c_in, H, W) or (K, fc_size)
 
         l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
-        _l = self.heaviside(l)
-        l_0_u = (self.heaviside(u) * self.heaviside(-l))
+        _l = heaviside(l)
+        l_0_u = (heaviside(u) * heaviside(-l))
 
         # TODO: check if broadcasting of lambdas works as expected
         # check completed see test_conv_pad
@@ -277,14 +285,6 @@ class ReLUZ(nn.Module):
         out[0, ...] -= l_0_u[0,...]*(self.lambdas * l / 2)[0, ...]
 
         return extend_Z(out, (- self.lambdas * l / 2 * l_0_u))
-
-    @staticmethod
-    def heaviside(a):
-        """
-        :param a: any dimensional pytorch tensor
-        :return: 0,1 identifier if input larger 0
-        """
-        return torch.relu(torch.sign(a))
 
 
 class ReLUZConv(ReLUZ):
@@ -310,15 +310,19 @@ class PairwiseLoss(nn.Module):
         self.trained_digit = trained_digit
 
     def forward(self, x):
-        return - self.net(x)[self.trained_digit]
+        loss = - self.net(x)[self.trained_digit]
+        is_verified = heaviside(-loss)
+        return loss, is_verified
 
 
 class GlobalLoss(nn.Module):
-    def __init__(self, net):
+    def __init__(self, net, reg):
         super(GlobalLoss, self).__init__()
         self.net = net
+        self.reg = reg
 
     def forward(self, x):
-        # x = self.net(x)
-        # return
-        raise NotImplemented
+        out = self.net(x)
+        loss = - torch.sum(out) + self.reg * torch.sum(torch.pdist(out.view((out.shape[0], 1)), p=1))
+        is_verified = torch.prod(heaviside(-loss))
+        return loss, is_verified
