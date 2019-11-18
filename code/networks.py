@@ -12,22 +12,21 @@ def upper_bound(x):
     return x[0, ...] + torch.sum(torch.abs(x[1:, ...]), dim=0)
 
 
+def is_scalar(x):
+    try:
+        float(x)
+    except ValueError:
+        return False
+
+    return True
+
+
 def heaviside(a):
     """
     :param a: any dimensional pytorch tensor
     :return: 0,1 identifier if input larger 0
     """
     return torch.relu(torch.sign(a))
-
-
-def get_child(param, net, val):
-    obj = net
-    # get weights
-    for attr in param.split('.'):
-            attr = int(attr)
-            obj = obj[attr]
-            obj = getattr(obj, attr)
-    return obj
 
 
 def pad_K_dim(x, pad):
@@ -53,8 +52,8 @@ def extend_Z(x, vals):
     K = x.shape[0]
     pad = np.prod(x.shape[1:])
     x = pad_K_dim(x, pad)
-    if not isinstance(vals, type(torch.tensor)):
-        vals = torch.ones(pad) * vals
+    if is_scalar(vals):
+        vals = vals * torch.ones(pad)
 
     # TODO: check this!!
     x[K:, ...] = torch.diagflat(vals).view([pad] + list(x.shape[1:]))
