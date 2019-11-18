@@ -53,8 +53,8 @@ def extend_Z(x, vals):
     K = x.shape[0]
     pad = np.prod(x.shape[1:])
     x = pad_K_dim(x, pad)
-    if isinstance(vals, float):
-        vals *= torch.ones(pad)
+    if not isinstance(vals, type(torch.tensor)):
+        vals = torch.ones(pad) * vals
 
     # TODO: check this!!
     x[K:, ...] = torch.diagflat(vals).view([pad] + list(x.shape[1:]))

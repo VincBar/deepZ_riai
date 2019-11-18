@@ -1,6 +1,7 @@
 import argparse
 import torch
 import sys
+import time
 
 sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
 
@@ -13,19 +14,21 @@ INPUT_SIZE = 28
 NET_CHOICES = ['fc1', 'fc2', 'fc3', 'fc4', 'fc5', 'conv1', 'conv2', 'conv3', 'conv4', 'conv5']
 
 
-def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
+def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=None):
     # TODO: think hard about this one, we want to avoid local minima
     optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
 
     if tensorboard:
         from torch.utils.tensorboard import SummaryWriter
-        time = strftime("%Y-%m-%d-%H_%M_%S", gmtime())
+        tim = strftime("%Y-%m-%d-%H_%M_%S", gmtime())
 
     if pairwise:
         trained_digits = non_verified_digits = set(range(10)) - {true_label}
         losses = dict([(i, PairwiseLoss(net, trained_digit=i)) for i in trained_digits])
 
-        while not not non_verified_digits:
+        now = time.time()
+        timer = True
+        while not not non_verified_digits and timer:
             i = list(non_verified_digits)[0]
 
             # initialize lambdas,
@@ -35,10 +38,17 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
 
             writer = None
             if tensorboard:
-                writer = SummaryWriter('../runs/pairwise_' + time + '_digit' + str(i))
+                writer = SummaryWriter('../runs/pairwise_' + tim + '_digit' + str(i))
 
-            res = run_optimization(net, inputs, losses[i], optimizer, writer=writer)
+            remaining_time = None
+            if maxsec is not None:
+                remaining_time = maxsec - (time.time() - now)
+                print(remaining_time)
+            res = run_optimization(net, inputs, losses[i], optimizer, writer=writer, maxsec=remaining_time)
             non_verified_digits -= {i}
+
+            if maxsec is not None:
+                timer = (time.time() - now) < maxsec
 
     else:
         loss = GlobalLoss(net, 0.1)
@@ -46,18 +56,20 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
 
         writer = None
         if tensorboard:
-            writer = SummaryWriter('../runs/global_' + time)
+            writer = SummaryWriter('../runs/global_' + tim)
 
-        res = run_optimization(net, inputs, loss, optimizer, writer=writer)
+        res = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec)
 
     return res
 
 
-def run_optimization(net, inputs, loss, optimizer, writer=None):
+def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
     is_verified = False
     counter = 0
 
-    while not is_verified:
+    now = time.time()
+    timer = True
+    while not is_verified and timer:
         counter += 1
         net.zero_grad()
         lss, is_verified = loss(inputs)
@@ -66,6 +78,12 @@ def run_optimization(net, inputs, loss, optimizer, writer=None):
 
         if writer is not None:
             writer.add_scalar('training loss', lss, counter)
+
+        if maxsec is not None:
+            timer = (time.time() - now) < maxsec
+
+    if not timer:
+        return 0
 
     return 1
 
@@ -94,30 +112,30 @@ def _generate_nets(typ, eps, true_label, device, *args, **kwargs):
     return net, netZ
 
 
-def load_net(net_name, eps, true_label):
+def load_net(net_name, eps, target):
     if net_name == 'fc1':
-        net, netZ = _generate_nets('fc', eps, true_label, DEVICE, INPUT_SIZE, [100, 10])
+        net, netZ = _generate_nets('fc', eps, target, DEVICE, INPUT_SIZE, [100, 10])
     elif net_name == 'fc2':
-        net, netZ = _generate_nets('fc', eps, true_label, DEVICE, INPUT_SIZE, [50, 50, 10])
+        net, netZ = _generate_nets('fc', eps, target, DEVICE, INPUT_SIZE, [50, 50, 10])
     elif net_name == 'fc3':
-        net, netZ = _generate_nets('fc', eps, true_label, DEVICE, INPUT_SIZE, [100, 100, 10])
+        net, netZ = _generate_nets('fc', eps, target, DEVICE, INPUT_SIZE, [100, 100, 10])
     elif net_name == 'fc4':
-        net, netZ = _generate_nets('fc', eps, true_label, DEVICE, INPUT_SIZE, [100, 100, 100, 10])
+        net, netZ = _generate_nets('fc', eps, target, DEVICE, INPUT_SIZE, [100, 100, 100, 10])
     elif net_name == 'fc5':
-        net, netZ = _generate_nets('fc', eps, true_label, DEVICE, INPUT_SIZE, [400, 200, 100, 100, 10])
+        net, netZ = _generate_nets('fc', eps, target, DEVICE, INPUT_SIZE, [400, 200, 100, 100, 10])
     elif net_name == 'conv1':
-        net, netZ = _generate_nets('conv', eps, true_label, DEVICE, INPUT_SIZE, [(32, 4, 2, 1)], [100, 10], 10)
+        net, netZ = _generate_nets('conv', eps, target, DEVICE, INPUT_SIZE, [(32, 4, 2, 1)], [100, 10], 10)
     elif net_name == 'conv2':
-        net, netZ = _generate_nets('conv', eps, true_label, DEVICE, INPUT_SIZE, [(32, 4, 2, 1), (64, 4, 2, 1)],
+        net, netZ = _generate_nets('conv', eps, target, DEVICE, INPUT_SIZE, [(32, 4, 2, 1), (64, 4, 2, 1)],
                                    [100, 10], 10)
     elif net_name == 'conv3':
-        net, netZ = _generate_nets('conv', eps, true_label, DEVICE, INPUT_SIZE,
+        net, netZ = _generate_nets('conv', eps, target, DEVICE, INPUT_SIZE,
                                    [(32, 3, 1, 1), (32, 4, 2, 1), (64, 4, 2, 1)], [150, 10], 10)
     elif net_name == 'conv4':
-        net, netZ = _generate_nets('conv', eps, true_label, DEVICE, INPUT_SIZE, [(32, 4, 2, 1), (64, 4, 2, 1)],
+        net, netZ = _generate_nets('conv', eps, target, DEVICE, INPUT_SIZE, [(32, 4, 2, 1), (64, 4, 2, 1)],
                                    [100, 100, 10], 10)
     elif net_name == 'conv5':
-        net, netZ = _generate_nets('conv', eps, true_label, DEVICE, INPUT_SIZE,
+        net, netZ = _generate_nets('conv', eps, target, DEVICE, INPUT_SIZE,
                                    [(16, 3, 1, 1), (32, 4, 2, 1), (64, 4, 2, 1)], [100, 100, 10], 10)
 
     state_dict = torch.load('../mnist_nets/%s.pt' % net_name, map_location=torch.device(DEVICE))
