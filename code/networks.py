@@ -12,14 +12,23 @@ def upper_bound(x):
     return x[0, ...] + torch.sum(torch.abs(x[1:, ...]), dim=0)
 
 
-def get_child(param, net, val):
-    obj = net
-    # get weights
-    for attr in param.split('.'):
-            attr = int(attr)
-            obj = obj[attr]
-            obj = getattr(obj, attr)
-    return obj
+def is_scalar(x):
+    try:
+        float(x)
+    except ValueError:
+        return False
+
+    return True
+
+
+def heaviside(a, zero_pos=False):
+    """
+    :param a: any dimensional pytorch tensor
+    :return: 0,1 identifier if input larger 0
+    """
+    if zero_pos:
+        a = a + np.finfo(float).eps
+    return torch.relu(torch.sign(a))
 
 
 def pad_K_dim(x, pad):
@@ -45,8 +54,8 @@ def extend_Z(x, vals):
     K = x.shape[0]
     pad = np.prod(x.shape[1:])
     x = pad_K_dim(x, pad)
-    if isinstance(vals, float):
-        vals *= torch.ones(pad)
+    if is_scalar(vals):
+        vals = vals * torch.ones(pad)
 
     # TODO: check this!!
     x[K:, ...] = torch.diagflat(vals).view([pad] + list(x.shape[1:]))
@@ -155,7 +164,7 @@ class NNConvZ(ZModule):
     Linear and introduce a new layer ToZ. Normalization was not replaced as it is a constant operation.
     """
 
-    def __init__(self, device, input_size, conv_layers, fc_layers, eps, target, n_class=10):
+    def __init__(self, device, input_size, conv_layers, fc_layers, n_class=10, eps=0, target=0):
         super(NNConvZ, self).__init__()
 
         self.input_size = input_size
@@ -268,18 +277,15 @@ class ReLUZ(nn.Module):
         # input is (K, c_in, H, W) or (K, fc_size)
 
         l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
-        _l = self.heaviside(l)
-        l_0_u = (self.heaviside(u) * self.heaviside(-l))
+        _l = heaviside(l)
+        l_0_u = (heaviside(u) * heaviside(-l))
 
         # TODO: check if broadcasting of lambdas works as expected
+        # check completed see test_conv_pad
         out = _l * x + l_0_u * self.lambdas * x
-        out[0, ...] -= (self.lambdas * l / 2)[0, ...]
+        out[0, ...] -= l_0_u[0,...]*(self.lambdas * l / 2)[0, ...]
 
-        return extend_Z(out, (- self.lambdas * l / 2 * l_0_u).flatten(start_dim=0))
-
-    @staticmethod
-    def heaviside(a):
-        return torch.relu(torch.sign(a))
+        return extend_Z(out, (- self.lambdas * l / 2 * l_0_u))
 
 
 class ReLUZConv(ReLUZ):
@@ -305,15 +311,19 @@ class PairwiseLoss(nn.Module):
         self.trained_digit = trained_digit
 
     def forward(self, x):
-        return - self.net(x)[self.trained_digit]
+        loss = - self.net(x)[self.trained_digit]
+        is_verified = heaviside(-loss)
+        return loss, is_verified
 
 
 class GlobalLoss(nn.Module):
-    def __init__(self, net):
+    def __init__(self, net, reg):
         super(GlobalLoss, self).__init__()
         self.net = net
+        self.reg = reg
 
     def forward(self, x):
-        # x = self.net(x)
-        # return 
-        raise NotImplemented
+        out = self.net(x)
+        loss = - torch.sum(out) + self.reg / out.shape[0] * torch.sum(torch.pdist(out.view((out.shape[0], 1)), p=1))
+        is_verified = torch.prod(heaviside(out, zero_pos=True))
+        return loss, is_verified

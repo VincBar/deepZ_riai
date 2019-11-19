@@ -1,27 +1,34 @@
 import argparse
 import torch
-from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, get_child
+import sys
+import time
+
+sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
+
+from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss
 from time import strftime, gmtime
 from collections import OrderedDict
 
 DEVICE = 'cpu'
 INPUT_SIZE = 28
+NET_CHOICES = ['fc1', 'fc2', 'fc3', 'fc4', 'fc5', 'conv1', 'conv2', 'conv3', 'conv4', 'conv5']
 
 
-def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
-
+def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=None):
     # TODO: think hard about this one, we want to avoid local minima
     optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
 
     if tensorboard:
         from torch.utils.tensorboard import SummaryWriter
-        time = strftime("%Y-%m-%d-%H_%M_%S", gmtime())
+        tim = strftime("%Y-%m-%d-%H_%M_%S", gmtime())
 
     if pairwise:
         trained_digits = non_verified_digits = set(range(10)) - {true_label}
         losses = dict([(i, PairwiseLoss(net, trained_digit=i)) for i in trained_digits])
 
-        while not not non_verified_digits:
+        start_time = time.time()
+        in_time = True
+        while not not non_verified_digits and in_time:
             i = list(non_verified_digits)[0]
 
             # initialize lambdas,
@@ -31,40 +38,52 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True):
 
             writer = None
             if tensorboard:
-                writer = SummaryWriter('../runs/pairwise_' + time + '_digit' + str(i))
+                writer = SummaryWriter('../runs/pairwise_' + tim + '_digit' + str(i))
 
-            res = run_optimization(net, inputs, losses[i], optimizer, writer=writer)
+            remaining_time = None
+            if maxsec is not None:
+                remaining_time = maxsec - (time.time() - start_time)
+
+            res = run_optimization(net, inputs, losses[i], optimizer, writer=writer, maxsec=remaining_time)
             non_verified_digits -= {i}
 
+            if maxsec is not None:
+                in_time = (time.time() - start_time) < maxsec
+
     else:
-        loss = GlobalLoss(net)
+        loss = GlobalLoss(net, 0.1)
         net.initialize()
 
         writer = None
         if tensorboard:
-            writer = SummaryWriter('../runs/global_' + time)
+            writer = SummaryWriter('../runs/global_' + tim)
 
-        res = run_optimization(net, inputs, loss, optimizer, writer=writer)
+        res = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec)
 
     return res
 
 
-def run_optimization(net, inputs, loss, optimizer, writer=None):
-    not_verified = True
+def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
+    is_verified = False
     counter = 0
 
-    while not_verified:
+    start_time = time.time()
+    in_time = True
+    while not is_verified and in_time:
         counter += 1
         net.zero_grad()
-        lss = loss(inputs)
+        lss, is_verified = loss(inputs)
         lss.backward()
         optimizer.step()
 
         if writer is not None:
             writer.add_scalar('training loss', lss, counter)
 
-        if - lss > 0:
-            not_verified = False
+        if maxsec is not None:
+            in_time = (time.time() - start_time) < maxsec
+
+    if not in_time:
+        return 0
 
     return 1
 
@@ -80,13 +99,55 @@ def load_Z(net, state_dict):
     net.load_state_dict(state_dict_shifted, strict=False)
 
 
+def _generate_nets(typ, eps, true_label, device, *args, **kwargs):
+    if typ is 'fc':
+        net = FullyConnected(device, *args, **kwargs).to(device)
+        netZ = NNFullyConnectedZ(device, *args, **kwargs, eps=eps, target=true_label).to(device)
+    elif typ == 'conv':
+        net = Conv(device, *args, **kwargs).to(device)
+        netZ = NNConvZ(device, *args, **kwargs, eps=eps, target=true_label).to(device)
+    else:
+        raise ValueError
+
+    return net, netZ
+
+
+def load_net(net_name, eps, target):
+    if net_name == 'fc1':
+        net, netZ = _generate_nets('fc', eps, target, DEVICE, INPUT_SIZE, [100, 10])
+    elif net_name == 'fc2':
+        net, netZ = _generate_nets('fc', eps, target, DEVICE, INPUT_SIZE, [50, 50, 10])
+    elif net_name == 'fc3':
+        net, netZ = _generate_nets('fc', eps, target, DEVICE, INPUT_SIZE, [100, 100, 10])
+    elif net_name == 'fc4':
+        net, netZ = _generate_nets('fc', eps, target, DEVICE, INPUT_SIZE, [100, 100, 100, 10])
+    elif net_name == 'fc5':
+        net, netZ = _generate_nets('fc', eps, target, DEVICE, INPUT_SIZE, [400, 200, 100, 100, 10])
+    elif net_name == 'conv1':
+        net, netZ = _generate_nets('conv', eps, target, DEVICE, INPUT_SIZE, [(32, 4, 2, 1)], [100, 10], 10)
+    elif net_name == 'conv2':
+        net, netZ = _generate_nets('conv', eps, target, DEVICE, INPUT_SIZE, [(32, 4, 2, 1), (64, 4, 2, 1)],
+                                   [100, 10], 10)
+    elif net_name == 'conv3':
+        net, netZ = _generate_nets('conv', eps, target, DEVICE, INPUT_SIZE,
+                                   [(32, 3, 1, 1), (32, 4, 2, 1), (64, 4, 2, 1)], [150, 10], 10)
+    elif net_name == 'conv4':
+        net, netZ = _generate_nets('conv', eps, target, DEVICE, INPUT_SIZE, [(32, 4, 2, 1), (64, 4, 2, 1)],
+                                   [100, 100, 10], 10)
+    elif net_name == 'conv5':
+        net, netZ = _generate_nets('conv', eps, target, DEVICE, INPUT_SIZE,
+                                   [(16, 3, 1, 1), (32, 4, 2, 1), (64, 4, 2, 1)], [100, 100, 10], 10)
+
+    state_dict = torch.load('../mnist_nets/%s.pt' % net_name, map_location=torch.device(DEVICE))
+    net.load_state_dict(state_dict)
+    load_Z(netZ, state_dict)
+
+    return net, netZ
+
+
 def main():
     parser = argparse.ArgumentParser(description='Neural network verification using DeepZ relaxation')
-    parser.add_argument('--net',
-                        type=str,
-                        choices=['fc1', 'fc2', 'fc3', 'fc4', 'fc5', 'conv1', 'conv2', 'conv3', 'conv4', 'conv5'],
-                        required=True,
-                        help='Neural network to verify.')
+    parser.add_argument('--net', type=str, choices=NET_CHOICES, required=True, help='Neural network to verify.')
     parser.add_argument('--spec', type=str, required=True, help='Test case to verify.')
     args = parser.parse_args()
 
@@ -96,43 +157,14 @@ def main():
         pixel_values = [float(line) for line in lines[1:]]
         eps = float(args.spec[:-4].split('/')[-1].split('_')[-1])
 
-    if args.net == 'fc1':
-        net = FullyConnected(DEVICE, INPUT_SIZE, [100, 10]).to(DEVICE)
-        netZ = NNFullyConnectedZ(DEVICE, INPUT_SIZE, [100, 10], eps, true_label).to(DEVICE)
-    elif args.net == 'fc2':
-        net = FullyConnected(DEVICE, INPUT_SIZE, [50, 50, 10]).to(DEVICE)
-        netZ = NNFullyConnectedZ(DEVICE, INPUT_SIZE, [50, 50, 10], eps, true_label).to(DEVICE)
-    elif args.net == 'fc3':
-        net = FullyConnected(DEVICE, INPUT_SIZE, [100, 100, 10]).to(DEVICE)
-    elif args.net == 'fc4':
-        net = FullyConnected(DEVICE, INPUT_SIZE, [100, 100, 100, 10]).to(DEVICE)
-    elif args.net == 'fc5':
-        net = FullyConnected(DEVICE, INPUT_SIZE, [400, 200, 100, 100, 10]).to(DEVICE)
-        netZ = NNFullyConnectedZ(DEVICE, INPUT_SIZE, [400, 200, 100, 100, 10], eps, true_label).to(DEVICE)
-    elif args.net == 'conv1':
-        net = Conv(DEVICE, INPUT_SIZE, [(32, 4, 2, 1)], [100, 10], 10).to(DEVICE)
-        netZ = NNConvZ(DEVICE, INPUT_SIZE, [(32, 4, 2, 1)], [100, 10], eps, true_label, 10).to(DEVICE)
-    elif args.net == 'conv2':
-        net = Conv(DEVICE, INPUT_SIZE, [(32, 4, 2, 1), (64, 4, 2, 1)], [100, 10], 10).to(DEVICE)
-    elif args.net == 'conv3':
-        net = Conv(DEVICE, INPUT_SIZE, [(32, 3, 1, 1), (32, 4, 2, 1), (64, 4, 2, 1)], [150, 10], 10).to(DEVICE)
-    elif args.net == 'conv4':
-        net = Conv(DEVICE, INPUT_SIZE, [(32, 4, 2, 1), (64, 4, 2, 1)], [100, 100, 10], 10).to(DEVICE)
-    elif args.net == 'conv5':
-        net = Conv(DEVICE, INPUT_SIZE, [(16, 3, 1, 1), (32, 4, 2, 1), (64, 4, 2, 1)], [100, 100, 10], 10).to(DEVICE)
-        netZ = NNConvZ(DEVICE, INPUT_SIZE, [(16, 3, 1, 1), (32, 4, 2, 1), (64, 4, 2, 1)], [100, 100, 10], eps, true_label,
-                       10).to(DEVICE)
-
-    state_dict = torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE))
-    net.load_state_dict(state_dict)
-    load_Z(netZ, state_dict)
+    net, netZ = load_net(args.net, eps, true_label)
 
     inputs = torch.FloatTensor(pixel_values).requires_grad_(False).view(1, 1, INPUT_SIZE, INPUT_SIZE).to(DEVICE)
     outs = net(inputs)
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(netZ, inputs, true_label, pairwise=True):
+    if analyze(netZ, inputs, true_label, pairwise=False, maxsec=120):
         print('verified')
     else:
         print('not verified')
