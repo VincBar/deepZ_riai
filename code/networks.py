@@ -21,11 +21,13 @@ def is_scalar(x):
     return True
 
 
-def heaviside(a):
+def heaviside(a, zero_pos=False):
     """
     :param a: any dimensional pytorch tensor
     :return: 0,1 identifier if input larger 0
     """
+    if zero_pos:
+        a = a + np.finfo(float).eps
     return torch.relu(torch.sign(a))
 
 
@@ -322,6 +324,6 @@ class GlobalLoss(nn.Module):
 
     def forward(self, x):
         out = self.net(x)
-        loss = - torch.sum(out) + self.reg * torch.sum(torch.pdist(out.view((out.shape[0], 1)), p=1))
-        is_verified = torch.prod(heaviside(-loss))
+        loss = - torch.sum(out) + self.reg / out.shape[0] * torch.sum(torch.pdist(out.view((out.shape[0], 1)), p=1))
+        is_verified = torch.prod(heaviside(out, zero_pos=True))
         return loss, is_verified
