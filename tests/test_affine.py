@@ -1,7 +1,7 @@
 import torch
 import sys
 sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
-from networks import LinearZ
+from code.networks import LinearZ
 
 # Let x the current zonotope. In the fully connected case x.shape = (K, fc_size).
 # Now, we want to transform x with the weight matrix b into x_out with x_out.shape = (K,fc_size_out)
