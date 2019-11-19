@@ -26,9 +26,9 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
         trained_digits = non_verified_digits = set(range(10)) - {true_label}
         losses = dict([(i, PairwiseLoss(net, trained_digit=i)) for i in trained_digits])
 
-        now = time.time()
-        timer = True
-        while not not non_verified_digits and timer:
+        start_time = time.time()
+        in_time = True
+        while not not non_verified_digits and in_time:
             i = list(non_verified_digits)[0]
 
             # initialize lambdas,
@@ -42,13 +42,13 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
 
             remaining_time = None
             if maxsec is not None:
-                remaining_time = maxsec - (time.time() - now)
-                print(remaining_time)
+                remaining_time = maxsec - (time.time() - start_time)
+
             res = run_optimization(net, inputs, losses[i], optimizer, writer=writer, maxsec=remaining_time)
             non_verified_digits -= {i}
 
             if maxsec is not None:
-                timer = (time.time() - now) < maxsec
+                in_time = (time.time() - start_time) < maxsec
 
     else:
         loss = GlobalLoss(net, 0.1)
@@ -67,9 +67,9 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
     is_verified = False
     counter = 0
 
-    now = time.time()
-    timer = True
-    while not is_verified and timer:
+    start_time = time.time()
+    in_time = True
+    while not is_verified and in_time:
         counter += 1
         net.zero_grad()
         lss, is_verified = loss(inputs)
@@ -80,9 +80,9 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
             writer.add_scalar('training loss', lss, counter)
 
         if maxsec is not None:
-            timer = (time.time() - now) < maxsec
+            in_time = (time.time() - start_time) < maxsec
 
-    if not timer:
+    if not in_time:
         return 0
 
     return 1
@@ -164,7 +164,7 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(netZ, inputs, true_label, pairwise=False):
+    if analyze(netZ, inputs, true_label, pairwise=False, maxsec=120):
         print('verified')
     else:
         print('not verified')
