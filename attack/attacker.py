@@ -86,7 +86,7 @@ def check_robustness(net, adversary, data, labels):
     return pred_labels_pert == labels
 
 
-def find_adversarial_examples(data, labels, eps, n_jobs=4):
+def find_adversarial_examples(data, labels, eps, n_jobs=4, gpu=False):
     """
     Tries to find adversial examples to the digits in data.
     :param eps:
@@ -108,8 +108,13 @@ def find_adversarial_examples(data, labels, eps, n_jobs=4):
         # get jobs with epsilon == e
         e_params = [(net, init_adversary(net, e), digit, torch.tensor([label])) for net, digit, label in job_params]
 
-        jobs = [delayed(check_robustness)(*param) for param in e_params]
-        out = Parallel(n_jobs=n_jobs)(jobs)
+        if not gpu:
+            jobs = [delayed(check_robustness)(*param) for param in e_params]
+            out = Parallel(n_jobs=n_jobs)(jobs)
+        else:
+            out = []
+            for param in e_params:
+                out.append(check_robustness(*param))
 
         # if there is an adversarial example for a (net, digit) combination, take it out and save eps
         adv_job_ind = np.where(np.logical_not(np.array(out)))[0]
@@ -184,7 +189,7 @@ def check_verify_first(data, labels, eps, nr_eps, n_jobs=4, pairwise=True, maxse
                          *args, **kwargs)
 
     eps = np.linspace(0.05, eps, nr_eps)
-    eps_lower_bound = find_adversarial_examples(data, labels, eps)
+    eps_lower_bound = find_adversarial_examples(data, labels, eps, n_jobs=n_jobs)
 
     # check that for none of the verified instances an adversarial example can be found
     assert torch.all(eps_lower_bound[is_verified] > torch.Tensor(eps_verif[is_verified]))
