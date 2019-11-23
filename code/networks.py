@@ -279,6 +279,7 @@ class ReLUZ(nn.Module):
         l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
         _l = heaviside(l)
         l_0_u = (heaviside(u) * heaviside(-l))
+        # TODO: check if lambdas are bounded between [0,1]
 
         # TODO: check if broadcasting of lambdas works as expected
         # check completed see test_conv_pad
@@ -291,7 +292,8 @@ class ReLUZ(nn.Module):
 class ReLUZConv(ReLUZ):
     def __init__(self, n_channels, height, width):
         super(ReLUZConv, self).__init__()
-
+        # TODO: Currently all lambdas are initialized as one. Maybe the initalization can be learned number specific, smallest area
+        # TODO: Only add rows that are actually relevant
         self.lambdas = nn.Parameter(torch.ones([1, n_channels, height, width]))
         self.lambdas.requires_grad_()
 

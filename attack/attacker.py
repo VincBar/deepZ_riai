@@ -5,7 +5,6 @@ import argparse
 import torch
 import torch.nn as nn
 import numpy as np
-import pandas as pd
 
 from advertorch.utils import predict_from_logits
 from advertorch_examples.utils import get_mnist_test_loader
@@ -23,8 +22,8 @@ from collections import OrderedDict
 
 torch.manual_seed(0)
 use_cuda = torch.cuda.is_available()
-device = torch.device("cuda" if use_cuda else "cpu")
-
+#device = torch.device("cuda" if use_cuda else "cpu")
+device="cpu"
 from joblib import Parallel, delayed
 
 
@@ -188,7 +187,7 @@ def check_verify_first(data, labels, eps, nr_eps, n_jobs=4, pairwise=True, maxse
     eps_lower_bound = find_adversarial_examples(data, labels, eps)
 
     # check that for none of the verified instances an adversarial example can be found
-    assert torch.all(eps_lower_bound[is_verified] > eps_verif[is_verified])
+    assert torch.all(eps_lower_bound[is_verified] > torch.Tensor(eps_verif[is_verified]))
 
 
 if __name__ == '__main__':
