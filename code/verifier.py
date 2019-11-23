@@ -164,7 +164,7 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(netZ, inputs, true_label, pairwise=False, maxsec=120):
+    if analyze(netZ, inputs, true_label, pairwise=True, maxsec=120):
         print('verified')
     else:
         print('not verified')

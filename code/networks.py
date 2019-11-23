@@ -43,7 +43,7 @@ def pad_K_dim(x, pad):
     return nn.functional.pad(x, padding, mode='constant', value=0)
 
 
-def extend_Z(x, vals,l_0_u):
+def extend_Z(x, vals, l_0_u):
     """
     Extend the K dimension of input x by the number of ReLU's put on an affine layer in the original NN and update the
     values in the K dim by vals. (see j=K+i and j=else in case distinction in 2.2 in project paper).
@@ -57,6 +57,7 @@ def extend_Z(x, vals,l_0_u):
     x = pad_K_dim(x, pad.numpy())
     if is_scalar(vals):
         vals = vals * torch.ones(pad)
+
     # TODO: check this!!
 
     x[K:, ...] =torch.diagflat(vals).view([pad2] + list(x.shape[1:]))[l_0_u.bool().flatten(),...]
@@ -213,7 +214,8 @@ class ToZ(nn.Module):
         self.eps = eps
 
     def forward(self, x):
-        return extend_Z(x, self.eps)
+        pad = np.prod(x.shape[1:])
+        return extend_Z(x, self.eps, torch.ones([pad]))
 
 
 class LinearZ(nn.Linear):
