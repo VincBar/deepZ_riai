@@ -43,7 +43,7 @@ def pad_K_dim(x, pad):
     return nn.functional.pad(x, padding, mode='constant', value=0)
 
 
-def extend_Z(x, vals):
+def extend_Z(x, vals,l_0_u):
     """
     Extend the K dimension of input x by the number of ReLU's put on an affine layer in the original NN and update the
     values in the K dim by vals. (see j=K+i and j=else in case distinction in 2.2 in project paper).
@@ -52,13 +52,14 @@ def extend_Z(x, vals):
     :return:
     """
     K = x.shape[0]
-    pad = np.prod(x.shape[1:])
-    x = pad_K_dim(x, pad)
+    pad = l_0_u.flatten().sum().int()
+    pad2 = np.prod(x.shape[1:])
+    x = pad_K_dim(x, pad.numpy())
     if is_scalar(vals):
         vals = vals * torch.ones(pad)
-
     # TODO: check this!!
-    x[K:, ...] = torch.diagflat(vals).view([pad] + list(x.shape[1:]))
+
+    x[K:, ...] =torch.diagflat(vals).view([pad2] + list(x.shape[1:]))[l_0_u.bool().flatten(),...]
     return x
 
 
@@ -285,8 +286,7 @@ class ReLUZ(nn.Module):
         # check completed see test_conv_pad
         out = _l * x + l_0_u * self.lambdas * x
         out[0, ...] -= l_0_u[0,...]*(self.lambdas * l / 2)[0, ...]
-
-        return extend_Z(out, (- self.lambdas * l / 2 * l_0_u))
+        return extend_Z(out, (- self.lambdas * l / 2 * l_0_u),l_0_u)
 
 
 class ReLUZConv(ReLUZ):
