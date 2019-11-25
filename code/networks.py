@@ -64,6 +64,19 @@ def extend_Z(x, vals, l_0_u):
     return x
 
 
+class ClipLambdas(object):
+
+    def __init__(self, frequency=5):
+        self.frequency = frequency
+
+    def __call__(self, module):
+        # filter the variables to get the ones you want
+        if hasattr(module, 'lambdas'):
+            lambdas = module.lambdas.data
+            lambdas = lambdas.clamp(0, 1)
+            module.lambdas.data = lambdas
+
+
 class Normalization(nn.Module):
 
     def __init__(self, device):
@@ -127,7 +140,7 @@ class ZModule(nn.Module):
     def initialize(self):
         for layer in self.layers:
             if isinstance(layer, ReLUZ):
-                layer.lambdas = nn.init.constant_(layer.lambdas, 0.99)
+                layer.lambdas = nn.init.constant_(layer.lambdas, 0.5)
                 layer.lambdas.requires_grad = True
 
             if isinstance(layer, LinearZ) or isinstance(layer, ConvZ):

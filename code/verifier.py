@@ -5,7 +5,7 @@ import time
 
 sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
 
-from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss
+from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, ClipLambdas
 from time import strftime, gmtime
 from collections import OrderedDict
 
@@ -74,12 +74,16 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
 
     start_time = time.time()
     in_time = True
+    clipper = ClipLambdas()
+
     while not is_verified and in_time:
         counter += 1
         net.zero_grad()
         lss, is_verified = loss(inputs)
         lss.backward()
         optimizer.step()
+
+        net.apply(clipper)
 
         if writer is not None:
             writer.add_scalar('training loss', lss, counter)
@@ -173,7 +177,6 @@ def main():
         print('verified')
     else:
         print('not verified')
-
 
 if __name__ == '__main__':
     main()

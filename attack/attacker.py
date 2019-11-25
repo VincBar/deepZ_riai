@@ -94,7 +94,7 @@ def check_robustness(net, adversary, data, labels):
     return pred_labels_pert == labels
 
 
-def find_adversarial_examples(data, labels, eps, n_jobs=4, mask=None):
+def find_adversarial_examples(data, labels, eps, n_jobs=4):
     """
     Tries to find adversarial examples to the digits in data.
     :param eps:
@@ -219,7 +219,7 @@ def check_adv_first(data, labels, nr_eps, n_jobs=4, pairwise=True, maxsec=120, c
                         'robust_upper_bound': eps_upper_bound.numpy().flatten(),
                         'run_time': run_times.numpy().flatten(),
                         'net': nets.flatten(),
-                        'digit': digits.flatten(),
+                        'digit_id': digits.flatten(),
                         })
 
     if check_smaller:
@@ -266,7 +266,7 @@ def check_verify_first(data, labels, eps, n_jobs=4, pairwise=True, maxsec=120, *
                         'robust_upper_bound': eps_upper_bound.numpy().flatten(),
                         'run_time': run_times.numpy().flatten(),
                         'net': nets.flatten(),
-                        'digit': digits.flatten(),
+                        'digit_id': digits.flatten(),
                         })
 
     return ret
@@ -277,7 +277,7 @@ if __name__ == '__main__':
     pd.options.display.max_columns = 12
 
     # don't use joblib with tensorboard !! set n_jobs=1 to deactivate joblib
-    print(check_adv_first(cln_data, true_labels, pairwise=False, nr_eps=10, n_jobs=6, maxsec=120, tensorboard=False))
+    print(check_adv_first(cln_data, true_labels, pairwise=False, nr_eps=10, n_jobs=1, maxsec=120, tensorboard=False))
 
     #check_verify_first(cln_data, true_labels, 0.15, 10, n_jobs=1)
 
