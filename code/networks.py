@@ -326,8 +326,10 @@ class PairwiseLoss(nn.Module):
         super(PairwiseLoss, self).__init__()
         self.net = net
         self.trained_digit = trained_digit
+        self.clipper = ClipLambdas()
 
     def forward(self, x):
+        self.net.apply(self.clipper)
         loss = - self.net(x)[self.trained_digit]
         is_verified = heaviside(-loss)
         return loss, is_verified
@@ -338,8 +340,10 @@ class GlobalLoss(nn.Module):
         super(GlobalLoss, self).__init__()
         self.net = net
         self.reg = reg
+        self.clipper = ClipLambdas()
 
     def forward(self, x):
+        self.net.apply(self.clipper)
         out = self.net(x)
         loss = - torch.sum(out) + self.reg / out.shape[0] * torch.sum(torch.pdist(out.view((out.shape[0], 1)), p=1))
         is_verified = torch.prod(heaviside(out, zero_pos=True))

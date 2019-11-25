@@ -74,7 +74,6 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
 
     start_time = time.time()
     in_time = True
-    clipper = ClipLambdas()
 
     while not is_verified and in_time:
         counter += 1
@@ -82,8 +81,6 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
         lss, is_verified = loss(inputs)
         lss.backward()
         optimizer.step()
-
-        net.apply(clipper)
 
         if writer is not None:
             writer.add_scalar('training loss', lss, counter)
