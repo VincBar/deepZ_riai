@@ -88,6 +88,16 @@ class Normalization(nn.Module):
         return (x - self.mean) / self.sigma
 
 
+class EpsNorm(nn.Module):
+    def __init__(self, device):
+        super(EpsNorm, self).__init__()
+        self.sigma = 0.3081
+
+    def forward(self, x):
+        x[1:, ...] = x[1:, ...] / self.sigma
+        return x
+
+
 class FullyConnected(nn.Module):
 
     def __init__(self, device, input_size, fc_layers):
@@ -158,7 +168,7 @@ class NNFullyConnectedZ(ZModule):
     def __init__(self, device, input_size, fc_layers, eps, target):
         super(NNFullyConnectedZ, self).__init__()
 
-        layers = [Normalization(device), ToZ(eps), Flatten(start_dim=1)]
+        layers = [Normalization(device), ToZ(eps), Flatten(start_dim=1), EpsNorm(device)]
         prev_fc_size = input_size * input_size
         for i, fc_size in enumerate(fc_layers):
             layers += [LinearZ(prev_fc_size, fc_size)]
@@ -185,7 +195,7 @@ class NNConvZ(ZModule):
         self.input_size = input_size
         self.n_class = n_class
 
-        layers = [Normalization(device), ToZ(eps)]
+        layers = [Normalization(device), ToZ(eps), EpsNorm(device)]
         prev_channels = 1
         height = width = input_size
 

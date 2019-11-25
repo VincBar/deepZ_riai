@@ -99,7 +99,7 @@ def load_Z(net, state_dict):
     state_dict_shifted = OrderedDict([])
     for key, val in state_dict.items():
         pre, nr, param = key.split('.')
-        nr = str(int(nr) + 1)
+        nr = str(int(nr) + 2)
         state_dict_shifted['.'.join([pre, nr, param])] = val.requires_grad_(False)
 
     net.load_state_dict(state_dict_shifted, strict=False)
@@ -174,6 +174,7 @@ def main():
         print('verified')
     else:
         print('not verified')
+
 
 if __name__ == '__main__':
     main()
