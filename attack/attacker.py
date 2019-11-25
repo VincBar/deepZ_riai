@@ -89,6 +89,7 @@ def check_robustness(net, adversary, data, labels):
     :param labels:
     :return: torch.tensor(dtype=bool) whether adversary attack was successful, i.e. whether an edv. example was found.
     """
+    labels = predict_from_logits(net(data))
     perturbed_data = adversary.perturb(data, labels)
     pred_labels_pert = predict_from_logits(net(perturbed_data))
     return pred_labels_pert == labels
@@ -189,7 +190,7 @@ def check_adv_first(data, labels, nr_eps, n_jobs=4, pairwise=True, maxsec=120, c
     is_robust = (eps_upper_bound == np.inf).type(torch.bool)
 
     # Try to verify non robust examples (with eps != np.inf). This must fail in order for the verifier to be sound.
-    is_verified, run_times = verify(data, labels, eps_upper_bound + 0.1, n_jobs=n_jobs, pairwise=pairwise,
+    is_verified, run_times = verify(data, labels, eps_upper_bound, n_jobs=n_jobs, pairwise=pairwise,
                                     maxsec=maxsec, *args, **kwargs)
 
     # check that none of the instances with an adversarial example is verified
@@ -277,7 +278,7 @@ if __name__ == '__main__':
     pd.options.display.max_columns = 12
 
     # don't use joblib with tensorboard !! set n_jobs=1 to deactivate joblib
-    print(check_adv_first(cln_data, true_labels, pairwise=False, nr_eps=10, n_jobs=1, maxsec=120, tensorboard=False))
+    print(check_adv_first(cln_data, true_labels, pairwise=False, nr_eps=10, n_jobs=4, maxsec=120, tensorboard=False))
 
     #check_verify_first(cln_data, true_labels, 0.15, 10, n_jobs=1)
 
