@@ -9,12 +9,13 @@ from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseL
 from time import strftime, gmtime
 from collections import OrderedDict
 
-DEVICE = 'cpu'
+use_cuda = torch.cuda.is_available()
+DEVICE = torch.device("cuda" if use_cuda else "cpu")
 INPUT_SIZE = 28
 NET_CHOICES = ['fc1', 'fc2', 'fc3', 'fc4', 'fc5', 'conv1', 'conv2', 'conv3', 'conv4', 'conv5']
 
 
-def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=None):
+def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=None, time_info=False):
     # TODO: think hard about this one, we want to avoid local minima
     optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
 
@@ -58,7 +59,11 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
         if tensorboard:
             writer = SummaryWriter('../runs/global_' + tim)
 
+        start_time = time.time()
         res = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec)
+
+    if time_info:
+        return res, time.time() - start_time
 
     return res
 
@@ -164,7 +169,7 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(netZ, inputs, true_label, pairwise=True, maxsec=120):
+    if analyze(netZ, inputs, true_label, pairwise=False, maxsec=120):
         print('verified')
     else:
         print('not verified')

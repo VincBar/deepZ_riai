@@ -60,7 +60,7 @@ def extend_Z(x, vals, l_0_u):
 
     # TODO: check this!!
 
-    x[K:, ...] =torch.diagflat(vals).view([pad2] + list(x.shape[1:]))[l_0_u.bool().flatten(),...]
+    x[K:, ...] = torch.diagflat(vals).view([pad2] + list(x.shape[1:]))[l_0_u.bool().flatten(), ...]
     return x
 
 
