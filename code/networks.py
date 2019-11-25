@@ -206,7 +206,7 @@ class NNConvZ(ZModule):
 class ToZ(nn.Module):
     """
     This layer takes an input tensor and inserts the K dimension for the initial zonotope of the image
-    with perturbation eps. The output will be (N, K, ...) where K = nr of input nodes (fc_size, height * width).
+    with perturbation eps. The output will be (K, ...) where K = nr of input nodes (fc_size, height * width).
     """
 
     def __init__(self, eps):
@@ -287,8 +287,8 @@ class ReLUZ(nn.Module):
         # TODO: check if broadcasting of lambdas works as expected
         # check completed see test_conv_pad
         out = _l * x + l_0_u * self.lambdas * x
-        out[0, ...] -= l_0_u[0,...]*(self.lambdas * l / 2)[0, ...]
-        return extend_Z(out, (- self.lambdas * l / 2 * l_0_u),l_0_u)
+        out[0, ...] -= l_0_u[0, ...] * (self.lambdas * l / 2)[0, ...]
+        return extend_Z(out, (- self.lambdas * l / 2 * l_0_u), l_0_u)
 
 
 class ReLUZConv(ReLUZ):
