@@ -121,7 +121,7 @@ def find_adversarial_examples(data, labels, eps, n_jobs=4, mask=None):
         e_params = [(net, init_adversary(net, e), digit, torch.tensor([label])) for net, digit, label in job_params]
 
         jobs = [partial(check_robustness, *param) for param in e_params]
-        out = run_jobs(jobs, n_jobs=n_jobs, joblib=(n_jobs == 1))
+        out = run_jobs(jobs, n_jobs=n_jobs, joblib=(n_jobs != 1))
 
         # if there is an adversarial example for a (net, digit) combination, take it out and save eps
         adv_job_ind = np.where(np.logical_not(np.array(out)))[0]
@@ -163,7 +163,7 @@ def verify(data, labels, eps, n_jobs=4, maxsec=120, tensorboard=False, pairwise=
                         pairwise=pairwise, tensorboard=tensorboard, maxsec=maxsec, time_info=True)
                 for netZ in netZs]
 
-        out = run_jobs(jobs, joblib=(n_jobs == 1), n_jobs=n_jobs)
+        out = run_jobs(jobs, joblib=(n_jobs != 1), n_jobs=n_jobs)
 
         is_verif, run_time = zip(*out)
         is_verified[non_robust_net, i] = torch.tensor(is_verif, dtype=torch.bool)
