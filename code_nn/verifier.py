@@ -2,9 +2,7 @@ import argparse
 import torch
 import time
 
-#sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
-
-from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, check_lambdas, ClipLambdas
+from .networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, check_lambdas, ClipLambdas
 from time import strftime, gmtime
 from collections import OrderedDict
 import numpy as np
