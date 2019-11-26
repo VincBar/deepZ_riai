@@ -4,7 +4,7 @@ import time
 
 #sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
 
-from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, check_lambdas, ClipLambdas
+from code_nn.networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, check_lambdas, ClipLambdas
 from time import strftime, gmtime
 from collections import OrderedDict
 import numpy as np
@@ -57,7 +57,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
                 in_time = (time.time() - start_time) < maxsec
 
     else:
-        loss = GlobalLoss(net, 0.1)
+        loss = GlobalLoss(0.1)
         net.initialize()
 
         writer = None
@@ -83,7 +83,7 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
         counter += 1
         net.zero_grad()
         out=net(inputs)
-        lss, is_verified  = loss(out)
+        lss, is_verified = loss(out)
         lss.backward()
         optimizer.step()
         clip = ClipLambdas()
