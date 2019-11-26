@@ -174,17 +174,20 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(netZ, inputs, true_label, pairwise=True, maxsec=120):
+    torch.set_printoptions(linewidth=300)
+
+    if analyze(netZ, inputs, true_label, pairwise=False, maxsec=120):
         print('verified')
     else:
         print('not verified')
 
-    # state_dict = torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE))
-    # for key, val in netZ.state_dict().items():
-    #     pre, nr, param = key.split('.')
-    #     nr = str(int(nr) - 2)
-    #     if param != 'lambdas':
-    #         print(state_dict['.'.join([pre, nr, param])] == val)
+    state_dict = torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE))
+    for key, val in netZ.state_dict().items():
+        pre, nr, param = key.split('.')
+        nr = str(int(nr) - 2)
+        if param != 'lambdas':
+            print(state_dict['.'.join([pre, nr, param])] == val)
+            print(val.requires_grad_())
 
 
 if __name__ == '__main__':
