@@ -91,7 +91,7 @@ def check_lambdas(net):
     for key, val in net.state_dict().items():
         pre, nr, param = key.split('.')
         if param == 'lambdas':
-            ret = ret & torch.all(val > 0)
+            ret = ret & torch.all(val > 0) & torch.all(val < 1)
             print('.'.join([pre, nr, param]), ret)
     return ret
 

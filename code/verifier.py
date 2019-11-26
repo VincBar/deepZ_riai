@@ -4,7 +4,7 @@ import time
 
 #sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
 
-from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, check_lambdas
+from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, check_lambdas, ClipLambdas
 from time import strftime, gmtime
 from collections import OrderedDict
 import numpy as np
@@ -78,7 +78,7 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
 
     start_time = time.time()
     in_time = True
-
+    clipper = ClipLambdas()
     while not is_verified and in_time:
         counter += 1
         net.zero_grad()
@@ -86,6 +86,7 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
         lss.backward()
         optimizer.step()
 
+        net.apply(clipper)
         if writer is not None:
             writer.add_scalar('training loss', lss, counter)
 
@@ -189,13 +190,13 @@ def main():
     else:
         print('not verified')
 
-    # state_dict = torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE))
-    # for key, val in netZ.state_dict().items():
-    #     pre, nr, param = key.split('.')
-    #     nr = str(int(nr) - 2)
-    #     if param != 'lambdas':
-    #         print(param, state_dict['.'.join([pre, nr, param])] == val)
-    #         print(param, val.requires_grad)
+    state_dict = torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE))
+    for key, val in netZ.state_dict().items():
+        pre, nr, param = key.split('.')
+        nr = str(int(nr) - 2)
+        if param != 'lambdas':
+            print(param, state_dict['.'.join([pre, nr, param])] == val)
+            print(param, val.requires_grad)
 
     check_lambdas(net)
 
