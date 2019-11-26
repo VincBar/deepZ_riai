@@ -11,6 +11,7 @@ import numpy as np
 
 use_cuda = torch.cuda.is_available()
 DEVICE = torch.device("cuda" if use_cuda else "cpu")
+DEVICE = torch.device("cpu")
 INPUT_SIZE = 28
 NET_CHOICES = ['fc1', 'fc2', 'fc3', 'fc4', 'fc5', 'conv1', 'conv2', 'conv3', 'conv4', 'conv5']
 
@@ -25,7 +26,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
 
     if pairwise:
         trained_digits = non_verified_digits = set(range(10)) - {true_label}
-        losses = dict([(i, PairwiseLoss(net, trained_digit=i)) for i in trained_digits])
+        losses = dict([(i, PairwiseLoss(trained_digit=i)) for i in trained_digits])
 
         start_time = time.time()
         in_time = True
@@ -81,11 +82,16 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
     while not is_verified and in_time:
         counter += 1
         net.zero_grad()
-        lss, is_verified, net_out = loss(inputs)
+        out=net(inputs)
+        lss, is_verified  = loss(out)
         lss.backward()
         optimizer.step()
         clip = ClipLambdas()
         net.apply(clip)
+        lam = check_lambdas(net)
+        print(lam)
+        assert lam
+
         if writer is not None:
             writer.add_scalar('training loss', lss, counter)
 
@@ -93,9 +99,9 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
             in_time = (time.time() - start_time) < maxsec
 
     if not in_time:
-        return 0, net_out
+        return 0
 
-    return 1, net_out
+    return 1
 
 
 def fix_weights(net):

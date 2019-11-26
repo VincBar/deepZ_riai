@@ -68,8 +68,9 @@ class ClipLambdas(object):
     def __call__(self, module):
         # filter the variables to get the ones you want
         if hasattr(module, 'lambdas'):
+            print("This is the module with lambdas", module)
             lambdas = module.lambdas.data
-            lambdas.clamp(1e-12, 1-1e-12)
+            lambdas=lambdas.clamp(1e-12, 1-1e-12)
             module.lambdas.data = lambdas
 
 
@@ -93,8 +94,9 @@ def check_lambdas(net):
     for key, val in net.state_dict().items():
         pre, nr, param = key.split('.')
         if param == 'lambdas':
-            up = torch.all(val < 1)
-            lo = torch.all(val > 0)
+            print("key and value of assertion",key,val)
+            up = torch.all(val <= 1)
+            lo = torch.all(val >= 0)
             ret = ret & lo & up
             print('.'.join([pre, nr, param]), lo, up)
     return ret
@@ -366,24 +368,16 @@ class ReLUZLinear(ReLUZ):
 
 
 class PairwiseLoss(nn.Module):
-    def __init__(self, net, trained_digit):
+    def __init__(self,trained_digit):
         super(PairwiseLoss, self).__init__()
-        self.net = net
         self.trained_digit = trained_digit
-        self.clipper = ClipLambdas()
-        self.non_verified = [self.trained_digit]
 
-    def forward(self, x):
-        #self.net.apply(self.clipper)
+    def forward(self,input):
 
-        lam = check_lambdas(self.net)
-        print(lam)
-        assert lam
 
-        out = self.net(x)
-        loss = - out[self.trained_digit]
-        is_verified = torch.sum(heaviside(out)[torch.LongTensor(self.non_verified)]) > 0
-        return loss, is_verified, out
+        loss = - input[self.trained_digit]
+        is_verified = (loss > 0)
+        return loss, is_verified
 
 
 class GlobalLoss(nn.Module):
