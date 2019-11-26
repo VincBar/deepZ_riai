@@ -89,7 +89,7 @@ class Normalization(nn.Module):
 
 
 class EpsNorm(nn.Module):
-    def __init__(self, device):
+    def __init__(self):
         super(EpsNorm, self).__init__()
         self.sigma = 0.3081
 
@@ -168,7 +168,7 @@ class NNFullyConnectedZ(ZModule):
     def __init__(self, device, input_size, fc_layers, eps, target):
         super(NNFullyConnectedZ, self).__init__()
 
-        layers = [Normalization(device), ToZ(eps), Flatten(start_dim=1), EpsNorm(device)]
+        layers = [Normalization(device), ToZ(eps), Flatten(start_dim=1), EpsNorm()]
         prev_fc_size = input_size * input_size
         for i, fc_size in enumerate(fc_layers):
             layers += [LinearZ(prev_fc_size, fc_size)]
@@ -195,7 +195,7 @@ class NNConvZ(ZModule):
         self.input_size = input_size
         self.n_class = n_class
 
-        layers = [Normalization(device), ToZ(eps), EpsNorm(device)]
+        layers = [Normalization(device), ToZ(eps), EpsNorm()]
         prev_channels = 1
         height = width = input_size
 
@@ -337,12 +337,14 @@ class PairwiseLoss(nn.Module):
         self.net = net
         self.trained_digit = trained_digit
         self.clipper = ClipLambdas()
+        self.non_verified = [self.trained_digit]
 
     def forward(self, x):
         self.net.apply(self.clipper)
-        loss = - self.net(x)[self.trained_digit]
-        is_verified = heaviside(-loss)
-        return loss, is_verified
+        out = self.net(x)
+        loss = - out[self.trained_digit]
+        is_verified = torch.sum(heaviside(out)[torch.LongTensor(self.non_verified)]) > 0
+        return loss, is_verified, out
 
 
 class GlobalLoss(nn.Module):
@@ -357,4 +359,4 @@ class GlobalLoss(nn.Module):
         out = self.net(x)
         loss = - torch.sum(out) + self.reg / out.shape[0] * torch.sum(torch.pdist(out.view((out.shape[0], 1)), p=1))
         is_verified = torch.prod(heaviside(out, zero_pos=True))
-        return loss, is_verified
+        return loss, is_verified, out

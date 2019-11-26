@@ -1,13 +1,13 @@
 import argparse
 import torch
-import sys
 import time
 
-sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
+#sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
 
 from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, ClipLambdas
 from time import strftime, gmtime
 from collections import OrderedDict
+import numpy as np
 
 use_cuda = torch.cuda.is_available()
 DEVICE = torch.device("cuda" if use_cuda else "cpu")
@@ -45,8 +45,12 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
             if maxsec is not None:
                 remaining_time = maxsec - (time.time() - start_time)
 
-            res = run_optimization(net, inputs, losses[i], optimizer, writer=writer, maxsec=remaining_time)
-            non_verified_digits -= {i}
+            losses[i].non_verified = list(non_verified_digits)
+            res, out = run_optimization(net, inputs, losses[i], optimizer, writer=writer, maxsec=remaining_time)
+
+            # check which digits can be cancelled
+            # print(np.where(out > 0)[0], non_verified_digits)
+            non_verified_digits -= set(np.where(out > 0)[0])
 
             if maxsec is not None:
                 in_time = (time.time() - start_time) < maxsec
@@ -60,7 +64,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
             writer = SummaryWriter('../runs/global_' + tim)
 
         start_time = time.time()
-        res = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec)
+        res, out = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec)
 
     if time_info:
         return res, time.time() - start_time
@@ -78,7 +82,7 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
     while not is_verified and in_time:
         counter += 1
         net.zero_grad()
-        lss, is_verified = loss(inputs)
+        lss, is_verified, net_out = loss(inputs)
         lss.backward()
         optimizer.step()
 
@@ -89,9 +93,9 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
             in_time = (time.time() - start_time) < maxsec
 
     if not in_time:
-        return 0
+        return 0, net_out
 
-    return 1
+    return 1, net_out
 
 
 def load_Z(net, state_dict):
@@ -170,10 +174,17 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(netZ, inputs, true_label, pairwise=False, maxsec=120):
+    if analyze(netZ, inputs, true_label, pairwise=True, maxsec=120):
         print('verified')
     else:
         print('not verified')
+
+    # state_dict = torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE))
+    # for key, val in netZ.state_dict().items():
+    #     pre, nr, param = key.split('.')
+    #     nr = str(int(nr) - 2)
+    #     if param != 'lambdas':
+    #         print(state_dict['.'.join([pre, nr, param])] == val)
 
 
 if __name__ == '__main__':
