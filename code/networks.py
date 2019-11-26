@@ -56,7 +56,7 @@ def extend_Z(x, vals, l_0_u):
     pad2 = np.prod(x.shape[1:])
     x = pad_K_dim(x, pad.numpy())
     if is_scalar(vals):
-        vals = vals * torch.ones(pad)
+        vals = vals * torch.ones(pad2)
 
     # TODO: check this!!
 
@@ -65,16 +65,23 @@ def extend_Z(x, vals, l_0_u):
 
 
 class ClipLambdas(object):
-
-    def __init__(self, frequency=5):
-        self.frequency = frequency
-
     def __call__(self, module):
         # filter the variables to get the ones you want
         if hasattr(module, 'lambdas'):
             lambdas = module.lambdas.data
             lambdas = lambdas.clamp(0, 1)
             module.lambdas.data = lambdas
+
+
+class WeightFixer(object):
+    def __call__(self, module):
+        # filter the variables to get the ones you want
+        if hasattr(module, 'weights'):
+            print('weight')
+            module.weights.requires_grad = False
+        if hasattr(module, 'bias'):
+            print('bias')
+            module.bias.requires_grad = False
 
 
 class Normalization(nn.Module):
@@ -280,7 +287,8 @@ class EndLayerZ(nn.Module):
         self.weights -= torch.diag(torch.ones(size))
 
     def forward(self, x):
-        return lower_bound(torch.einsum('ji, ki -> kj', [self.weights, x]))
+        out = lower_bound(torch.einsum('ji, ki -> kj', [self.weights, x]))
+        return out
 
 
 class ReLUZ(nn.Module):
@@ -317,7 +325,8 @@ class ReLUZ(nn.Module):
 class ReLUZConv(ReLUZ):
     def __init__(self, n_channels, height, width):
         super(ReLUZConv, self).__init__()
-        # TODO: Currently all lambdas are initialized as one. Maybe the initalization can be learned number specific, smallest area
+        # TODO: Currently all lambdas are initialized as one.
+        # Maybe the initalization can be learned number specific, smallest area
         # TODO: Only add rows that are actually relevant
         self.lambdas = nn.Parameter(torch.ones([1, n_channels, height, width]))
         self.lambdas.requires_grad_()

@@ -4,7 +4,7 @@ import time
 
 #sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
 
-from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, ClipLambdas
+from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer
 from time import strftime, gmtime
 from collections import OrderedDict
 import numpy as np
@@ -98,6 +98,12 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
     return 1, net_out
 
 
+def fix_weights(net):
+    fixer = WeightFixer()
+    net = net.apply(fixer)
+
+    return net
+
 def load_Z(net, state_dict):
     # there is one layer more in netZ (ToZ), so shift layer names.
     state_dict_shifted = OrderedDict([])
@@ -107,6 +113,9 @@ def load_Z(net, state_dict):
         state_dict_shifted['.'.join([pre, nr, param])] = val.requires_grad_(False)
 
     net.load_state_dict(state_dict_shifted, strict=False)
+    net = fix_weights(net)
+
+    return net
 
 
 def _generate_nets(typ, eps, true_label, device, *args, **kwargs):
@@ -150,7 +159,7 @@ def load_net(net_name, eps, target):
 
     state_dict = torch.load('../mnist_nets/%s.pt' % net_name, map_location=torch.device(DEVICE))
     net.load_state_dict(state_dict)
-    load_Z(netZ, state_dict)
+    netZ = load_Z(netZ, state_dict)
 
     return net, netZ
 
