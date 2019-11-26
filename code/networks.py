@@ -68,20 +68,32 @@ class ClipLambdas(object):
     def __call__(self, module):
         # filter the variables to get the ones you want
         if hasattr(module, 'lambdas'):
-            lambdas = module.lambdas.data
-            lambdas = lambdas.clamp(0, 1)
-            module.lambdas.data = lambdas
+            module.lambdas.data = module.lambdas.clamp(1e-12, 1-1e-12)
 
 
 class WeightFixer(object):
     def __call__(self, module):
         # filter the variables to get the ones you want
-        if hasattr(module, 'weights'):
-            print('weight')
-            module.weights.requires_grad = False
+        if hasattr(module, 'weight'):
+            # print('weight')
+            # print(module)
+            # print(id(module))
+            module.weight.requires_grad = False
         if hasattr(module, 'bias'):
-            print('bias')
+            # print('bias')
+            # print(module)
+            # print(id(module))
             module.bias.requires_grad = False
+
+
+def check_lambdas(net):
+    ret = torch.tensor([True])
+    for key, val in net.state_dict().items():
+        pre, nr, param = key.split('.')
+        if param == 'lambdas':
+            ret = ret & torch.all(val > 0)
+            print('.'.join([pre, nr, param]), ret)
+    return ret
 
 
 class Normalization(nn.Module):
@@ -254,6 +266,11 @@ class LinearZ(nn.Linear):
     entry in the K dim. This is achieved by treating each entry in the K dim as a seperate member of a batch by folding
     the K dim into the batch dim. This should leverage PyTorch's parallel computation.
     """
+    def __init__(self, *args, **kwargs):
+        super(LinearZ, self).__init__(*args, **kwargs)
+        self.weight.requires_grad = False
+        self.bias.requires_grad = False
+
     def forward(self, x):
         out = nn.functional.linear(x, self.weight, bias=None)
         out[0, :] += self.bias
@@ -266,6 +283,10 @@ class ConvZ(nn.Conv2d):
     entry in the K dim. This is achieved by treating each entry in the K dim as a seperate member of a batch by folding
     the K dim into the batch dim. This should leverage PyTorch's parallel computation.
     """
+    def __init__(self, *args, **kwargs):
+        super(ConvZ, self).__init__(*args, **kwargs)
+        self.weight.requires_grad = False
+        self.bias.requires_grad = False
 
     def forward(self, x):
         out = nn.functional.conv2d(x, weight=self.weight, bias=None, stride=self.stride, padding=self.padding)
@@ -350,6 +371,11 @@ class PairwiseLoss(nn.Module):
 
     def forward(self, x):
         self.net.apply(self.clipper)
+
+        lam = check_lambdas(self.net)
+        print(lam)
+        assert lam
+
         out = self.net(x)
         loss = - out[self.trained_digit]
         is_verified = torch.sum(heaviside(out)[torch.LongTensor(self.non_verified)]) > 0
@@ -365,7 +391,13 @@ class GlobalLoss(nn.Module):
 
     def forward(self, x):
         self.net.apply(self.clipper)
+
+        lam = check_lambdas(self.net)
+        print(lam)
+        assert lam
+
         out = self.net(x)
         loss = - torch.sum(out) + self.reg / out.shape[0] * torch.sum(torch.pdist(out.view((out.shape[0], 1)), p=1))
         is_verified = torch.prod(heaviside(out, zero_pos=True))
         return loss, is_verified, out
+

@@ -4,7 +4,7 @@ import time
 
 #sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
 
-from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer
+from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, check_lambdas
 from time import strftime, gmtime
 from collections import OrderedDict
 import numpy as np
@@ -110,11 +110,10 @@ def load_Z(net, state_dict):
     for key, val in state_dict.items():
         pre, nr, param = key.split('.')
         nr = str(int(nr) + 2)
-        state_dict_shifted['.'.join([pre, nr, param])] = val.requires_grad_(False)
+        state_dict_shifted['.'.join([pre, nr, param])] = val
 
     net.load_state_dict(state_dict_shifted, strict=False)
     net = fix_weights(net)
-
     return net
 
 
@@ -185,19 +184,20 @@ def main():
 
     torch.set_printoptions(linewidth=300)
 
-    if analyze(netZ, inputs, true_label, pairwise=False, maxsec=120):
+    if analyze(netZ, inputs, true_label, pairwise=True, maxsec=120):
         print('verified')
     else:
         print('not verified')
 
-    state_dict = torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE))
-    for key, val in netZ.state_dict().items():
-        pre, nr, param = key.split('.')
-        nr = str(int(nr) - 2)
-        if param != 'lambdas':
-            print(state_dict['.'.join([pre, nr, param])] == val)
-            print(val.requires_grad_())
+    # state_dict = torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE))
+    # for key, val in netZ.state_dict().items():
+    #     pre, nr, param = key.split('.')
+    #     nr = str(int(nr) - 2)
+    #     if param != 'lambdas':
+    #         print(param, state_dict['.'.join([pre, nr, param])] == val)
+    #         print(param, val.requires_grad)
 
+    check_lambdas(net)
 
 if __name__ == '__main__':
     main()
