@@ -68,7 +68,9 @@ class ClipLambdas(object):
     def __call__(self, module):
         # filter the variables to get the ones you want
         if hasattr(module, 'lambdas'):
-            module.lambdas.data = module.lambdas.clamp(1e-12, 1-1e-12)
+            lambdas = module.lambdas.data
+            lambdas.clamp(1e-12, 1-1e-12)
+            module.lambdas.data = lambdas
 
 
 class WeightFixer(object):
@@ -91,8 +93,10 @@ def check_lambdas(net):
     for key, val in net.state_dict().items():
         pre, nr, param = key.split('.')
         if param == 'lambdas':
-            ret = ret & torch.all(val > 0) & torch.all(val < 1)
-            print('.'.join([pre, nr, param]), ret)
+            up = torch.all(val < 1)
+            lo = torch.all(val > 0)
+            ret = ret & lo & up
+            print('.'.join([pre, nr, param]), lo, up)
     return ret
 
 
@@ -370,7 +374,7 @@ class PairwiseLoss(nn.Module):
         self.non_verified = [self.trained_digit]
 
     def forward(self, x):
-        self.net.apply(self.clipper)
+        #self.net.apply(self.clipper)
 
         lam = check_lambdas(self.net)
         print(lam)
@@ -390,7 +394,7 @@ class GlobalLoss(nn.Module):
         self.clipper = ClipLambdas()
 
     def forward(self, x):
-        self.net.apply(self.clipper)
+        #self.net.apply(self.clipper)
 
         lam = check_lambdas(self.net)
         print(lam)

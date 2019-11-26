@@ -1,7 +1,5 @@
 import sys
-sys.path.insert(0, "..")
-sys.path.insert(0, "../code")
-sys.path.insert(0, "../code/verifier.py")
+sys.path.append('..')
 
 import torch
 import torch.nn as nn
@@ -12,8 +10,10 @@ from advertorch.utils import predict_from_logits
 from advertorch_examples.utils import get_mnist_test_loader
 from advertorch.attacks import LinfPGDAttack, PGDAttack
 
-import code.verifier
-import code.networks
+import code_nn
+import code_nn.verifier
+import code_nn.networks
+
 from collections import OrderedDict
 
 from functools import partial
@@ -91,10 +91,10 @@ def check_robustness(net, adversary, data, labels):
     :param labels:
     :return: torch.tensor(dtype=bool) whether adversary attack was successful, i.e. whether an edv. example was found.
     """
-    labels = predict_from_logits(net(data))
-    perturbed_data = adversary.perturb(data, labels)
+    pred_labels = predict_from_logits(net(data))
+    perturbed_data = adversary.perturb(data, pred_labels)
     pred_labels_pert = predict_from_logits(net(perturbed_data))
-    return pred_labels_pert == labels
+    return pred_labels_pert == pred_labels
 
 
 def find_adversarial_examples(data, labels, eps, n_jobs=4):
@@ -280,7 +280,7 @@ if __name__ == '__main__':
     pd.options.display.max_columns = 12
 
     # don't use joblib with tensorboard !! set n_jobs=1 to deactivate joblib
-    print(check_adv_first(cln_data, true_labels, pairwise=True, nr_eps=10, n_jobs=4, maxsec=1, tensorboard=False,
+    print(check_adv_first(cln_data, true_labels, pairwise=False, nr_eps=10, n_jobs=1, maxsec=120, tensorboard=False,
                           check_smaller=False))
 
     #check_verify_first(cln_data, true_labels, 0.15, 10, n_jobs=1)
