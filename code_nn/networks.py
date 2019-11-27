@@ -87,10 +87,10 @@ def check_lambdas(net):
     for key, val in net.state_dict().items():
         pre, nr, param = key.split('.')
         if param == 'lambdas':
-            up = torch.all(val <= 1)
-            lo = torch.all(val >= 0)
+            up = torch.all(val <= 1-1e-12)
+            lo = torch.all(val >= 1e-12)
             ret = ret & lo & up
-            #print('.'.join([pre, nr, param]), lo, up)
+            # print('.'.join([pre, nr, param]), lo, up)
             if not lo:
                 print('lo', val[val < 0])
             if not up:
@@ -364,40 +364,24 @@ class ReLUZLinear(ReLUZ):
 
 
 class PairwiseLoss(nn.Module):
-    def __init__(self, net, trained_digit):
+    def __init__(self, trained_digit):
         super(PairwiseLoss, self).__init__()
-        self.net = net
         self.trained_digit = trained_digit
-        self.clipper = ClipLambdas()
         self.non_verified = [self.trained_digit]
 
     def forward(self, x):
-        self.net.apply(ClipLambdas())
-
-        lam = check_lambdas(self.net)
-        assert lam
-
-        out = self.net(x)
-        loss = - out[self.trained_digit]
-        is_verified = torch.sum(heaviside(out)[torch.LongTensor(self.non_verified)]) > 0
-        return loss, is_verified, out
+        loss = - x[self.trained_digit]
+        is_verified = torch.sum(heaviside(x)[torch.LongTensor(self.non_verified)]) > 0
+        return loss, is_verified
 
 
 class GlobalLoss(nn.Module):
-    def __init__(self, net, reg):
+    def __init__(self, reg):
         super(GlobalLoss, self).__init__()
-        self.net = net
         self.reg = reg
-        self.clipper = ClipLambdas()
 
     def forward(self, x):
-        self.net.apply(ClipLambdas())
-
-        lam = check_lambdas(self.net)
-        assert lam
-
-        out = self.net(x)
-        loss = - torch.sum(out) + self.reg / out.shape[0] * torch.sum(torch.pdist(out.view((out.shape[0], 1)), p=1))
-        is_verified = torch.prod(heaviside(out, zero_pos=True))
-        return loss, is_verified, out
+        loss = - torch.sum(x) + self.reg / x.shape[0] * torch.sum(torch.pdist(x.view((x.shape[0], 1)), p=1))
+        is_verified = torch.prod(heaviside(x, zero_pos=True))
+        return loss, is_verified
 

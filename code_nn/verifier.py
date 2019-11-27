@@ -23,7 +23,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
 
     if pairwise:
         trained_digits = non_verified_digits = set(range(10)) - {true_label}
-        losses = dict([(i, PairwiseLoss(net, trained_digit=i)) for i in trained_digits])
+        losses = dict([(i, PairwiseLoss(trained_digit=i)) for i in trained_digits])
 
         start_time = time.time()
         in_time = True
@@ -54,7 +54,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
                 in_time = (time.time() - start_time) < maxsec
 
     else:
-        loss = GlobalLoss(net, 0.1)
+        loss = GlobalLoss(0.1)
         net.initialize()
 
         writer = None
@@ -79,11 +79,17 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
     while not is_verified and in_time:
         counter += 1
         net.zero_grad()
-        lss, is_verified, net_out = loss(inputs)
+
+        out = net(inputs)
+        lss, is_verified = loss(out)
+
         lss.backward()
         optimizer.step()
-        clip = ClipLambdas()
-        net.apply(clip)
+
+        net.apply(ClipLambdas())
+
+        assert check_lambdas(net)
+
         if writer is not None:
             writer.add_scalar('training loss', lss, counter)
 
@@ -91,9 +97,9 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
             in_time = (time.time() - start_time) < maxsec
 
     if not in_time:
-        return 0, net_out
+        return 0, out
 
-    return 1, net_out
+    return 1, out
 
 
 def fix_weights(net):
@@ -102,7 +108,8 @@ def fix_weights(net):
 
     return net
 
-def load_Z(net, state_dict):
+
+def loadZ(net, state_dict):
     # there is one layer more in netZ (ToZ), so shift layer names.
     state_dict_shifted = OrderedDict([])
     for key, val in state_dict.items():
@@ -156,7 +163,7 @@ def load_net(net_name, eps, target):
 
     state_dict = torch.load('../mnist_nets/%s.pt' % net_name, map_location=torch.device(DEVICE))
     net.load_state_dict(state_dict)
-    netZ = load_Z(netZ, state_dict)
+    netZ = loadZ(netZ, state_dict)
 
     return net, netZ
 
