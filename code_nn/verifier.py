@@ -198,7 +198,7 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    torch.set_printoptions(linewidth=300)
+    torch.set_printoptions(linewidth=300, edgeitems=5)
 
     if analyze(netZ, inputs, true_label, pairwise=True, maxsec=120):
         print('verified')

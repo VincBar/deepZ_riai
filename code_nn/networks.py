@@ -336,13 +336,23 @@ class ReLUZ(nn.Module):
         l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
         _l = heaviside(l)
         l_0_u = (heaviside(u) * heaviside(-l))
-        # TODO: check if lambdas are bounded between [0,1]
 
+        lambda_crit = u / (l - u)
+        is_lower = self.lambdas < lambda_crit
+        is_larger = torch.logical_not(is_lower)
+
+        # TODO: check if lambdas are bounded between [0,1]
         # TODO: check if broadcasting of lambdas works as expected
         # check completed see test_conv_pad
+
+        # compute shift
+        d = torch.zeros(self.lambdas.shape)
+        d[is_lower] = - l[is_lower]
+        d[is_larger] = (1 - self.lambdas[is_larger]) / self.lambdas[is_larger] * u[is_larger]
+
         out = _l * x + l_0_u * self.lambdas * x
-        out[0, ...] -= l_0_u[0, ...] * (self.lambdas * l / 2)[0, ...]
-        return extend_Z(out, (- self.lambdas * l / 2 * l_0_u), l_0_u)
+        out[0, ...] += l_0_u[0, ...] * (self.lambdas * d / 2)[0, ...]
+        return extend_Z(out, self.lambdas * d / 2 * l_0_u, l_0_u)
 
 
 class ReLUZConv(ReLUZ):
