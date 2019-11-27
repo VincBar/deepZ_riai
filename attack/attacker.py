@@ -1,6 +1,3 @@
-import sys
-sys.path.append('..')
-
 import torch
 import torch.nn as nn
 import numpy as np
@@ -8,7 +5,7 @@ import pandas as pd
 
 from advertorch.utils import predict_from_logits
 from advertorch_examples.utils import get_mnist_test_loader
-from advertorch.attacks import LinfPGDAttack, PGDAttack
+from advertorch.attacks import LinfPGDAttack
 
 import code_nn
 import code_nn.verifier
