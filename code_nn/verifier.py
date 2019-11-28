@@ -23,7 +23,7 @@ def check_weights(net_name, netZ):
         pre, nr, param = key.split('.')
         nr = str(int(nr) - 2)
         if param != 'lambdas':
-            print(param, state_dict['.'.join([pre, nr, param])] == val)
+            #print(param, state_dict['.'.join([pre, nr, param])] == val)
             print(param, val.requires_grad)
 
 

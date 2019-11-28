@@ -277,7 +277,7 @@ if __name__ == '__main__':
     pd.options.display.max_columns = 12
 
     # don't use joblib with tensorboard !! set n_jobs=1 to deactivate joblib
-    print(check_adv_first(cln_data, true_labels, pairwise=False, nr_eps=10, n_jobs=1, maxsec=120, tensorboard=False,
+    print(check_adv_first(cln_data, true_labels, pairwise=False, nr_eps=10, n_jobs=1, maxsec=60, tensorboard=False,
                           check_smaller=False))
 
     #check_verify_first(cln_data, true_labels, 0.15, 10, n_jobs=1)
