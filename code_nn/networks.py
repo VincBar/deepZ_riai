@@ -339,7 +339,7 @@ class ReLUZ(nn.Module):
         l_0_u = (heaviside(u) * heaviside(-l))
 
         d_1= -l*self.lambdas
-        d_2= (torch.ones(self.lambdas.shape)-self.lambdas)*u
+        d_2= u*(torch.ones(self.lambdas.shape)-self.lambdas)
 
         # TODO: check if lambdas are bounded between [0,1]
         # check completed
