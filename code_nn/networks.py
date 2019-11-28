@@ -352,7 +352,7 @@ class ReLUZ(nn.Module):
 
         out = _l * x + l_0_u * self.lambdas * x
         out[0, ...] += l_0_u[0, ...] * (d / 2)[0, ...]
-        return extend_Z(out, self.lambdas * d / 2 * l_0_u, l_0_u)
+        return extend_Z(out, d / 2 * l_0_u, l_0_u)
 
 
 class ReLUZConv(ReLUZ):
