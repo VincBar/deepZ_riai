@@ -296,7 +296,6 @@ class ConvZ(nn.Conv2d):
         return out
 
 
-
 class EndLayerZ(nn.Module):
     """
     This layer computes the difference between the pseudo-probability outputs for all digits and the target digit.
@@ -314,6 +313,7 @@ class EndLayerZ(nn.Module):
         x = nn.functional.linear(x, self.weight, bias=None)
         out = lower_bound(x)
         return out
+
 
 class ReLUZ(nn.Module):
     """
@@ -334,13 +334,12 @@ class ReLUZ(nn.Module):
         # TODO: I don't know if the following is computed in parallel, if written like this
         # input is (K, c_in, H, W) or (K, fc_size)
 
-
         l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
         _l = heaviside(l)
         l_0_u = (heaviside(u) * heaviside(-l))
 
-        d_1= -l*self.lambdas
-        d_2= u*(torch.ones(self.lambdas.shape)-self.lambdas)
+        d_1 = -l * self.lambdas
+        d_2 = u * (1 - self.lambdas)
 
         # TODO: check if lambdas are bounded between [0,1]
         # check completed
@@ -348,7 +347,7 @@ class ReLUZ(nn.Module):
         # check completed see test_conv_pad
 
         # compute shift
-        d = torch.max(d_1,d_2)
+        d = torch.max(d_1, d_2)
 
         out = _l * x + l_0_u * self.lambdas * x
         out[0, ...] += l_0_u[0, ...] * (d / 2)[0, ...]
@@ -393,8 +392,8 @@ class GlobalLoss(nn.Module):
     def forward(self, x):
         loss = - torch.sum(x) + self.reg / x.shape[0] * torch.sum(torch.pdist(x.view((x.shape[0], 1)), p=1))
         is_verified = torch.prod(heaviside(x, zero_pos=True)).bool()
-        print(is_verified)
-        if is_verified:
-            print("stooop")
+        # print(is_verified)
+        # if is_verified:
+        #     print("stooop")
         return loss, is_verified
 

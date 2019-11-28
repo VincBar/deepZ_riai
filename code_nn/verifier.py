@@ -102,7 +102,7 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
 
         net.apply(ClipLambdas())
 
-        assert check_lambdas(net)
+        # assert check_lambdas(net)
 
         if writer is not None:
             writer.add_scalar('training loss', lss, counter)
