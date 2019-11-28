@@ -4,7 +4,8 @@ import time
 
 #sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
 
-from code_nn.networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, check_lambdas, ClipLambdas
+from code_nn.networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, \
+    check_lambdas, ClipLambdas
 from time import strftime, gmtime
 from collections import OrderedDict
 import numpy as np
@@ -14,6 +15,16 @@ DEVICE = torch.device("cuda" if use_cuda else "cpu")
 DEVICE = torch.device("cpu")
 INPUT_SIZE = 28
 NET_CHOICES = ['fc1', 'fc2', 'fc3', 'fc4', 'fc5', 'conv1', 'conv2', 'conv3', 'conv4', 'conv5']
+
+
+def check_weights(net_name, netZ):
+    state_dict = torch.load('../mnist_nets/%s.pt' % net_name, map_location=torch.device(DEVICE))
+    for key, val in netZ.state_dict().items():
+        pre, nr, param = key.split('.')
+        nr = str(int(nr) - 2)
+        if param != 'lambdas':
+            print(param, state_dict['.'.join([pre, nr, param])] == val)
+            print(param, val.requires_grad)
 
 
 def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=None, time_info=False):
@@ -82,15 +93,16 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
     while not is_verified and in_time:
         counter += 1
         net.zero_grad()
-        out=net(inputs)
+
+        out = net(inputs)
         lss, is_verified = loss(out)
+
         lss.backward()
         optimizer.step()
-        clip = ClipLambdas()
-        net.apply(clip)
-        lam = check_lambdas(net)
-        print(lam)
-        assert lam
+
+        net.apply(ClipLambdas())
+
+        assert check_lambdas(net)
 
         if writer is not None:
             writer.add_scalar('training loss', lss, counter)
@@ -99,9 +111,9 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
             in_time = (time.time() - start_time) < maxsec
 
     if not in_time:
-        return 0
+        return 0, out
 
-    return 1
+    return 1, out
 
 
 def fix_weights(net):
@@ -110,7 +122,8 @@ def fix_weights(net):
 
     return net
 
-def load_Z(net, state_dict):
+
+def loadZ(net, state_dict):
     # there is one layer more in netZ (ToZ), so shift layer names.
     state_dict_shifted = OrderedDict([])
     for key, val in state_dict.items():
@@ -164,7 +177,7 @@ def load_net(net_name, eps, target):
 
     state_dict = torch.load('../mnist_nets/%s.pt' % net_name, map_location=torch.device(DEVICE))
     net.load_state_dict(state_dict)
-    netZ = load_Z(netZ, state_dict)
+    netZ = loadZ(netZ, state_dict)
 
     return net, netZ
 
@@ -188,22 +201,16 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    torch.set_printoptions(linewidth=300)
+    torch.set_printoptions(linewidth=300, edgeitems=5)
 
     if analyze(netZ, inputs, true_label, pairwise=True, maxsec=120):
         print('verified')
     else:
         print('not verified')
 
-    state_dict = torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE))
-    for key, val in netZ.state_dict().items():
-        pre, nr, param = key.split('.')
-        nr = str(int(nr) - 2)
-        if param != 'lambdas':
-            print(param, state_dict['.'.join([pre, nr, param])] == val)
-            print(param, val.requires_grad)
-
+    check_weights(args.net, netZ)
     check_lambdas(net)
+
 
 if __name__ == '__main__':
     main()

@@ -68,9 +68,8 @@ class ClipLambdas(object):
     def __call__(self, module):
         # filter the variables to get the ones you want
         if hasattr(module, 'lambdas'):
-            print("This is the module with lambdas", module)
             lambdas = module.lambdas.data
-            lambdas=lambdas.clamp(1e-12, 1-1e-12)
+            lambdas = lambdas.clamp(1e-12, 1-1e-12)
             module.lambdas.data = lambdas
 
 
@@ -78,14 +77,8 @@ class WeightFixer(object):
     def __call__(self, module):
         # filter the variables to get the ones you want
         if hasattr(module, 'weight'):
-            # print('weight')
-            # print(module)
-            # print(id(module))
             module.weight.requires_grad = False
         if hasattr(module, 'bias'):
-            # print('bias')
-            # print(module)
-            # print(id(module))
             module.bias.requires_grad = False
 
 
@@ -94,11 +87,14 @@ def check_lambdas(net):
     for key, val in net.state_dict().items():
         pre, nr, param = key.split('.')
         if param == 'lambdas':
-            print("key and value of assertion",key,val)
-            up = torch.all(val <= 1)
-            lo = torch.all(val >= 0)
+            up = torch.all(val <= 1-1e-12)
+            lo = torch.all(val >= 1e-12)
             ret = ret & lo & up
-            print('.'.join([pre, nr, param]), lo, up)
+            # print('.'.join([pre, nr, param]), lo, up)
+            if not lo:
+                print('lo', val[val < 0])
+            if not up:
+                print('up', val[val > 1])
     return ret
 
 
@@ -340,13 +336,23 @@ class ReLUZ(nn.Module):
         l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
         _l = heaviside(l)
         l_0_u = (heaviside(u) * heaviside(-l))
-        # TODO: check if lambdas are bounded between [0,1]
 
+        lambda_crit = u / (l - u)
+        is_lower = self.lambdas < lambda_crit
+        is_larger = torch.logical_not(is_lower)
+
+        # TODO: check if lambdas are bounded between [0,1]
         # TODO: check if broadcasting of lambdas works as expected
         # check completed see test_conv_pad
+
+        # compute shift
+        d = torch.zeros(self.lambdas.shape)
+        d[is_lower] = - l[is_lower]
+        d[is_larger] = (1 - self.lambdas[is_larger]) / self.lambdas[is_larger] * u[is_larger]
+
         out = _l * x + l_0_u * self.lambdas * x
-        out[0, ...] -= l_0_u[0, ...] * (self.lambdas * l / 2)[0, ...]
-        return extend_Z(out, (- self.lambdas * l / 2 * l_0_u), l_0_u)
+        out[0, ...] += l_0_u[0, ...] * (self.lambdas * d / 2)[0, ...]
+        return extend_Z(out, self.lambdas * d / 2 * l_0_u, l_0_u)
 
 
 class ReLUZConv(ReLUZ):
@@ -368,15 +374,14 @@ class ReLUZLinear(ReLUZ):
 
 
 class PairwiseLoss(nn.Module):
-    def __init__(self,trained_digit):
+    def __init__(self, trained_digit):
         super(PairwiseLoss, self).__init__()
         self.trained_digit = trained_digit
+        self.non_verified = [self.trained_digit]
 
-    def forward(self,input):
-
-
-        loss = - input[self.trained_digit]
-        is_verified = (loss > 0)
+    def forward(self, x):
+        loss = - x[self.trained_digit]
+        is_verified = torch.sum(heaviside(x)[torch.LongTensor(self.non_verified)]) > 0
         return loss, is_verified
 
 
@@ -385,9 +390,8 @@ class GlobalLoss(nn.Module):
         super(GlobalLoss, self).__init__()
         self.reg = reg
 
-    def forward(self, out):
-        #self.net.apply(self.clipper)
-        loss = - torch.sum(out) + self.reg / out.shape[0] * torch.sum(torch.pdist(out.view((out.shape[0], 1)), p=1))
-        is_verified = torch.prod(heaviside(out, zero_pos=True))
+    def forward(self, x):
+        loss = - torch.sum(x) + self.reg / x.shape[0] * torch.sum(torch.pdist(x.view((x.shape[0], 1)), p=1))
+        is_verified = torch.prod(heaviside(x, zero_pos=True))
         return loss, is_verified
 
