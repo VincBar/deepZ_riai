@@ -305,12 +305,12 @@ class EndLayerZ(nn.Module):
         super(EndLayerZ, self).__init__()
         self.target = target
 
-        self.weights = torch.zeros([size, size])
-        self.weights[:, target] = 1
-        self.weights -= torch.diag(torch.ones(size))
+        self.weight = torch.zeros([size, size]).double()
+        self.weight[:, target] = 1
+        self.weight -= torch.diag(torch.ones(size)).double()
 
     def forward(self, x):
-        out = lower_bound(torch.einsum('ji, ki -> kj', [self.weights, x]))
+        out = lower_bound(torch.einsum('ji, ki -> kj', [self.weight, x]))
         return out
 
 
