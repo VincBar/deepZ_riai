@@ -202,9 +202,10 @@ def main():
     assert pred_label == true_label
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
-
-    if analyze(netZ, inputs, true_label, pairwise=True, maxsec=120):
+    start_time = time.time()
+    if analyze(netZ, inputs, true_label, pairwise=True, maxsec=500):
         print('verified')
+        print(time.time()-start_time)
     else:
         print('not verified')
 

@@ -296,6 +296,7 @@ class ConvZ(nn.Conv2d):
         return out
 
 
+
 class EndLayerZ(nn.Module):
     """
     This layer computes the difference between the pseudo-probability outputs for all digits and the target digit.
@@ -305,14 +306,14 @@ class EndLayerZ(nn.Module):
         super(EndLayerZ, self).__init__()
         self.target = target
 
-        self.weight = torch.zeros([size, size]).double()
+        self.weight = torch.zeros([size, size])
         self.weight[:, target] = 1
-        self.weight -= torch.diag(torch.ones(size)).double()
+        self.weight -= torch.diag(torch.ones(size))
 
     def forward(self, x):
-        out = lower_bound(torch.einsum('ji, ki -> kj', [self.weight, x]))
+        x = nn.functional.linear(x, self.weight, bias=None)
+        out = lower_bound(x)
         return out
-
 
 class ReLUZ(nn.Module):
     """
@@ -391,6 +392,9 @@ class GlobalLoss(nn.Module):
 
     def forward(self, x):
         loss = - torch.sum(x) + self.reg / x.shape[0] * torch.sum(torch.pdist(x.view((x.shape[0], 1)), p=1))
-        is_verified = torch.prod(heaviside(x, zero_pos=True))
+        is_verified = torch.prod(heaviside(x, zero_pos=True)).bool()
+        print(is_verified)
+        if is_verified:
+            print("stooop")
         return loss, is_verified
 
