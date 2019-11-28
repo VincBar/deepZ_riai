@@ -333,25 +333,24 @@ class ReLUZ(nn.Module):
         # TODO: I don't know if the following is computed in parallel, if written like this
         # input is (K, c_in, H, W) or (K, fc_size)
 
+
         l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
         _l = heaviside(l)
         l_0_u = (heaviside(u) * heaviside(-l))
 
-        lambda_crit = u / (l - u)
-        is_lower = self.lambdas < lambda_crit
-        is_larger = torch.logical_not(is_lower)
+        d_1= -l*self.lambdas
+        d_2= (torch.ones(self.lambdas.shape)-self.lambdas)*u
 
         # TODO: check if lambdas are bounded between [0,1]
+        # check completed
         # TODO: check if broadcasting of lambdas works as expected
         # check completed see test_conv_pad
 
         # compute shift
-        d = torch.zeros(self.lambdas.shape)
-        d[is_lower] = - l[is_lower]
-        d[is_larger] = (1 - self.lambdas[is_larger]) / self.lambdas[is_larger] * u[is_larger]
+        d = torch.max(d_1,d_2)
 
         out = _l * x + l_0_u * self.lambdas * x
-        out[0, ...] += l_0_u[0, ...] * (self.lambdas * d / 2)[0, ...]
+        out[0, ...] += l_0_u[0, ...] * (d / 2)[0, ...]
         return extend_Z(out, self.lambdas * d / 2 * l_0_u, l_0_u)
 
 
