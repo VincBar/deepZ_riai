@@ -69,7 +69,7 @@ class ClipLambdas(object):
         # filter the variables to get the ones you want
         if hasattr(module, 'lambdas'):
             lambdas = module.lambdas.data
-            lambdas = lambdas.clamp(1e-12, 1-1e-12)
+            lambdas = lambdas.clamp(0, 1)
             module.lambdas.data = lambdas
 
 
@@ -87,8 +87,8 @@ def check_lambdas(net):
     for key, val in net.state_dict().items():
         pre, nr, param = key.split('.')
         if param == 'lambdas':
-            up = torch.all(val <= 1-1e-12)
-            lo = torch.all(val >= 1e-12)
+            up = torch.all(val <= 1)
+            lo = torch.all(val >= 0)
             ret = ret & lo & up
             # print('.'.join([pre, nr, param]), lo, up)
             if not lo:
@@ -353,6 +353,32 @@ class ReLUZ(nn.Module):
         out = _l * x + l_0_u * self.lambdas * x
         out[0, ...] += l_0_u[0, ...] * (d / 2)[0, ...]
         return extend_Z(out, d / 2 * l_0_u, l_0_u)
+
+        # # TODO: I don't know if the following is computed in parallel, if written like this
+        # # input is (K, c_in, H, W) or (K, fc_size)
+        #
+        # l_t, u_t = lower_bound(x)[None, :], upper_bound(x)[None, :]
+        # _l_t = heaviside(l_t)
+        # l_0_u_t = (heaviside(u_t) * heaviside(-l_t))
+        #
+        # lambda_crit_t = u_t / (u_t - l_t)
+        # is_lower = self.lambdas < lambda_crit_t
+        # is_larger = torch.logical_not(is_lower)
+        #
+        # # TODO: check if lambdas are bounded between [0,1]
+        # # TODO: check if broadcasting of lambdas works as expected
+        # # check completed see test_conv_pad
+        #
+        # # compute shift
+        # d_t = torch.zeros(self.lambdas.shape)
+        # d_t[is_larger] = - l_t[is_larger]
+        # d_t[is_lower] = (1 - self.lambdas[is_lower])/self.lambdas[is_lower] * u_t[is_lower]
+        #
+        # out_t = _l_t * x + l_0_u_t * self.lambdas * x
+        # out_t[0, ...] += l_0_u_t[0, ...] * (self.lambdas * d_t / 2)[0, ...]
+        # torch.all(out_t==out)
+        #
+        # return extend_Z(out_t, self.lambdas * d_t/2 * l_0_u_t, l_0_u_t)
 
 
 class ReLUZConv(ReLUZ):

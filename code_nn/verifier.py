@@ -99,8 +99,8 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
 
         lss.backward()
         optimizer.step()
-
         net.apply(ClipLambdas())
+        print(net.layers[5].lambdas)
 
         # assert check_lambdas(net)
 
@@ -203,7 +203,7 @@ def main():
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
     start_time = time.time()
-    if analyze(netZ, inputs, true_label, pairwise=True, maxsec=20):
+    if analyze(netZ, inputs, true_label, pairwise=False, maxsec=100000):
         print('verified')
         print(time.time()-start_time)
     else:
