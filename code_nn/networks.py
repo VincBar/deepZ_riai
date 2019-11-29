@@ -168,16 +168,20 @@ class Conv(nn.Module):
 
 
 class ZModule(nn.Module):
-    def initialize(self):
-        for layer in self.layers:
+    def initialize(self,inputs):
+        out=inputs
+        for i,layer in enumerate(self.layers):
             if isinstance(layer, ReLUZ):
-                layer.lambdas = nn.init.constant_(layer.lambdas, 0.5)
-                layer.lambdas.requires_grad = True
+                with torch.no_grad():
+                    l = lower_bound(out)
+                    u = upper_bound(out)
+                    layer.lambdas.copy_(u/(u-l))
+                    layer.lambdas.requires_grad = True
 
             if isinstance(layer, LinearZ) or isinstance(layer, ConvZ):
                 layer.weight.requires_grad = False
                 layer.bias.requires_grad = False
-
+            out = self.layers[i](out)
 
 class NNFullyConnectedZ(ZModule):
     """

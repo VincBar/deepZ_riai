@@ -47,7 +47,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
             # initialize lambdas,
             # TODO: do we restart from scratch for each digit? we could try warm starting, maybe for 'similar' digits
             # TODO: search good initialization
-            net.initialize()
+            net.initialize(inputs)
 
             writer = None
             if tensorboard:
@@ -69,7 +69,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
 
     else:
         loss = GlobalLoss(0.1)
-        net.initialize()
+        net.initialize(inputs)
 
         writer = None
         if tensorboard:
@@ -100,7 +100,6 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
         lss.backward()
         optimizer.step()
         net.apply(ClipLambdas())
-        print(net.layers[5].lambdas)
 
         # assert check_lambdas(net)
 
@@ -203,7 +202,7 @@ def main():
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
     start_time = time.time()
-    if analyze(netZ, inputs, true_label, pairwise=False, maxsec=100000):
+    if analyze(netZ, inputs, true_label, pairwise=True, maxsec=100000):
         print('verified')
         print(time.time()-start_time)
     else:
