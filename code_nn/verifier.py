@@ -18,13 +18,13 @@ NET_CHOICES = ['fc1', 'fc2', 'fc3', 'fc4', 'fc5', 'conv1', 'conv2', 'conv3', 'co
 
 
 def check_weights(net_name, netZ):
-    state_dict = torch.load('../mnist_nets/%s.pt' % net_name, map_location=torch.device(DEVICE))
+    state_dict_check = torch.load('../mnist_nets/%s.pt' % net_name, map_location=torch.device(DEVICE))
     for key, val in netZ.state_dict().items():
         pre, nr, param = key.split('.')
         nr = str(int(nr) - 2)
         if param != 'lambdas':
-            #print(param, state_dict['.'.join([pre, nr, param])] == val)
-            print(param, val.requires_grad)
+            print(param,": All net parameters equal to original value ?", torch.all(state_dict_check['.'.join([pre, nr, param])] == val))
+            print(param,": Net parameter requires gradient ?", val.requires_grad)
 
 
 def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=None, time_info=False):
@@ -203,7 +203,7 @@ def main():
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
     start_time = time.time()
-    if analyze(netZ, inputs, true_label, pairwise=True, maxsec=500):
+    if analyze(netZ, inputs, true_label, pairwise=True, maxsec=20):
         print('verified')
         print(time.time()-start_time)
     else:

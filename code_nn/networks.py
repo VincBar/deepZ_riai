@@ -312,6 +312,7 @@ class EndLayerZ(nn.Module):
     def forward(self, x):
         x = nn.functional.linear(x, self.weight, bias=None)
         out = lower_bound(x)
+        print(out)
         return out
 
 
