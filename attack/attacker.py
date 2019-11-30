@@ -23,6 +23,7 @@ use_cuda = torch.cuda.is_available()
 DEVICE = torch.device("cuda" if use_cuda else "cpu")
 DEVICE = torch.device("cpu")
 
+
 def run_jobs(jobs, joblib=True, n_jobs=4):
     if joblib:
         jobs = [delayed(job)() for job in jobs]
@@ -155,13 +156,14 @@ def verify(data, labels, eps, n_jobs=4, maxsec=120, tensorboard=False, pairwise=
     for i, dta in enumerate(zip(data, labels)):
         digit, label = dta
         netZs = load_nets(eps=eps[:, i], target=label, zonotope=True)
+        print(len(netZs), eps[:, i])
 
         non_robust_net = np.where(eps[:, i] < np.inf)[0]
-        netZs = [netZ for i, netZ in enumerate(netZs.values()) if i in non_robust_net]
+        netZs_epss = [(netZ, eps[j, i]) for j, netZ in enumerate(netZs.values()) if j in non_robust_net]
 
-        jobs = [partial(code_nn.verifier.analyze, net=netZ, inputs=digit[None, :], true_label=label,
+        jobs = [partial(code_nn.verifier.analyze, net=netZ, inputs=digit[None, :], true_label=label, eps=eps,
                         pairwise=pairwise, tensorboard=tensorboard, maxsec=maxsec, time_info=True)
-                for netZ in netZs]
+                for netZ, eps in netZs_epss]
 
         out = run_jobs(jobs, joblib=(n_jobs != 1), n_jobs=n_jobs)
 
@@ -273,13 +275,13 @@ def check_verify_first(data, labels, eps, n_jobs=4, pairwise=True, maxsec=120, *
 
 
 if __name__ == '__main__':
-    for i in range(2,15):
-        cln_data, true_labels = load_data(1)
-        pd.options.display.max_columns = 12
+    #for i in range(2,15):
+    cln_data, true_labels = load_data(1)
+    pd.options.display.max_columns = 12
 
-        # don't use joblib with tensorboard !! set n_jobs=1 to deactivate joblib
-        print(check_adv_first(cln_data, true_labels, pairwise=True, nr_eps=10, n_jobs=1, maxsec=60, tensorboard=False,
-                              check_smaller=False))
+    # don't use joblib with tensorboard !! set n_jobs=1 to deactivate joblib
+    print(check_adv_first(cln_data, true_labels, pairwise=False, nr_eps=5, n_jobs=5, maxsec=60, tensorboard=False,
+                          check_smaller=True))
 
     #check_verify_first(cln_data, true_labels, 0.15, 10, n_jobs=1)
 

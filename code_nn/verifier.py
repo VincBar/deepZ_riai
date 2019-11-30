@@ -27,7 +27,7 @@ def check_weights(net_name, netZ):
             print(param,": Net parameter requires gradient ?", val.requires_grad)
 
 
-def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=None, time_info=False):
+def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxsec=None, time_info=False):
     # TODO: think hard about this one, we want to avoid local minima
     optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
 
@@ -47,7 +47,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
             # initialize lambdas,
             # TODO: do we restart from scratch for each digit? we could try warm starting, maybe for 'similar' digits
             # TODO: search good initialization
-            net.initialize(inputs)
+            net.initialize(inputs, eps)
 
             writer = None
             if tensorboard:
@@ -69,7 +69,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
 
     else:
         loss = GlobalLoss(0.1)
-        net.initialize(inputs)
+        net.initialize(inputs, eps)
 
         writer = None
         if tensorboard:
@@ -202,7 +202,7 @@ def main():
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
     start_time = time.time()
-    if analyze(netZ, inputs, true_label, pairwise=True, maxsec=100000):
+    if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=120):
         print('verified')
         print(time.time()-start_time)
     else:
