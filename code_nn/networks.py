@@ -5,12 +5,12 @@ import numpy as np
 
 
 def lower_bound(x,filter_low,filter_up):
-    filt=(heaviside(-x[1:785, ...])*filter_low)+(filter_up*heaviside(x[1:785]))+(torch.logical_not(filter_low+filter_up).float()*torch.ones(x[1:785,...].shape))
+    filt=(heaviside(-x[1:785, ...])*filter_low+filter_up*heaviside(x[1:785])+((filter_low+filter_up)-1)*torch.ones(x[1:785,...].shape))
     return x[0, ...] - torch.sum(torch.abs(x[1:785,...]*filt),dim=0)-torch.sum(torch.abs(x[785:,...]), dim=0)
 
 
 def upper_bound(x,filter_low,filter_up):
-    filt=(filter_low*heaviside(x[1:785, ...]))+(filter_up*heaviside(-x[1:785]))+(torch.logical_not(filter_low+filter_up).float()*torch.ones(x[1:785,...].shape))
+    filt=(filter_low*heaviside(x[1:785, ...])+(filter_up*heaviside(-x[1:785]))-((filter_low+filter_up)-1)*torch.ones(x[1:785,...].shape))
     return  x[0, ...] - torch.sum(torch.abs(x[1:785,...]*filt),dim=0)-torch.sum(torch.abs(x[785:,...]), dim=0)
 
 
