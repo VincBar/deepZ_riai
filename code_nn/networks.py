@@ -4,12 +4,14 @@ from torch.nn.modules.flatten import Flatten
 import numpy as np
 
 
-def lower_bound(x):
-    return x[0, ...] - torch.sum(torch.abs(x[1:, ...]), dim=0)
+def lower_bound(x,filter_low,filter_up):
+    filt=(heaviside(-x[1:785, ...])*filter_low)+(filter_up*heaviside(x[1:785]))+(torch.logical_not(filter_low+filter_up).float()*torch.ones(x[1:785,...].shape))
+    return x[0, ...] - torch.sum(torch.abs(x[1:785,...]*filt),dim=0)-torch.sum(torch.abs(x[785:,...]), dim=0)
 
 
-def upper_bound(x):
-    return x[0, ...] + torch.sum(torch.abs(x[1:, ...]), dim=0)
+def upper_bound(x,filter_low,filter_up):
+    filt=(filter_low*heaviside(x[1:785, ...]))+(filter_up*heaviside(-x[1:785]))+(torch.logical_not(filter_low+filter_up).float()*torch.ones(x[1:785,...].shape))
+    return  x[0, ...] - torch.sum(torch.abs(x[1:785,...]*filt),dim=0)-torch.sum(torch.abs(x[785:,...]), dim=0)
 
 
 def is_scalar(x):
@@ -170,17 +172,24 @@ class Conv(nn.Module):
 class ZModule(nn.Module):
     def initialize(self,inputs):
         out=inputs
+        filter_low=(inputs == 0).float().view(-1,1)
+        filter_up=(inputs==1).float().view(-1,1)
         for i,layer in enumerate(self.layers):
             if isinstance(layer, ReLUZ):
                 with torch.no_grad():
-                    l = lower_bound(out)
-                    u = upper_bound(out)
+                    layer.filter_low = filter_low
+                    layer.filter_up= filter_up
+                    l = lower_bound(out,layer.filter_low,layer.filter_up)
+                    u = upper_bound(out,layer.filter_low,layer.filter_up)
                     layer.lambdas.copy_(u/(u-l))
                     layer.lambdas.requires_grad = True
 
             if isinstance(layer, LinearZ) or isinstance(layer, ConvZ):
                 layer.weight.requires_grad = False
                 layer.bias.requires_grad = False
+            if isinstance(layer,EndLayerZ):
+                layer.filter_low = filter_low
+                layer.filter_up = filter_up
             out = self.layers[i](out)
 
 class NNFullyConnectedZ(ZModule):
@@ -202,6 +211,8 @@ class NNFullyConnectedZ(ZModule):
             prev_fc_size = fc_size
         layers += [EndLayerZ(target, prev_fc_size)]
         self.layers = nn.Sequential(*layers)
+        self.filter_low = torch.zeros(input_size*input_size)
+        self.filter_up = torch.zeros(input_size*input_size)
 
     def forward(self, x):
         return self.layers(x)
@@ -315,7 +326,7 @@ class EndLayerZ(nn.Module):
 
     def forward(self, x):
         x = nn.functional.linear(x, self.weight, bias=None)
-        out = lower_bound(x)
+        out = lower_bound(x,self.filter_low,self.filter_up)
         print(out)
         return out
 
@@ -339,7 +350,7 @@ class ReLUZ(nn.Module):
         # TODO: I don't know if the following is computed in parallel, if written like this
         # input is (K, c_in, H, W) or (K, fc_size)
 
-        l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
+        l, u = lower_bound(x,self.filter_low,self.filter_up)[None, :], upper_bound(x,self.filter_low,self.filter_up)[None, :]
         _l = heaviside(l)
         l_0_u = (heaviside(u) * heaviside(-l))
 

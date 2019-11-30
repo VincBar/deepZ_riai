@@ -27,9 +27,12 @@ def check_weights(net_name, netZ):
             print(param,": Net parameter requires gradient ?", val.requires_grad)
 
 
-def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=None, time_info=False):
+def analyze(net, inputs, true_label,pairwise=True, tensorboard=True, maxsec=None, time_info=False):
     # TODO: think hard about this one, we want to avoid local minima
     optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
+
+    net.filter_low=(inputs==0).float().view(1,-1)
+    net.filter_up=(inputs==1).float().view(1,-1)
 
     if tensorboard:
         from torch.utils.tensorboard import SummaryWriter
@@ -59,6 +62,7 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
 
             losses[i].non_verified = list(non_verified_digits)
             res, out = run_optimization(net, inputs, losses[i], optimizer, writer=writer, maxsec=remaining_time)
+
 
             # check which digits can be cancelled
             # print(np.where(out > 0)[0], non_verified_digits)
@@ -202,6 +206,8 @@ def main():
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
     start_time = time.time()
+    #clamp_ind=((inputs-eps)==0)
+    #inputs[clamp_ind]=eps/2
     if analyze(netZ, inputs, true_label, pairwise=True, maxsec=100000):
         print('verified')
         print(time.time()-start_time)
