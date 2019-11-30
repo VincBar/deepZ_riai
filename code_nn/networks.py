@@ -15,29 +15,29 @@ import numpy as np
 #
 
 class Bound(nn.Module):
-    def __init__(self, a_i0, eps):
+    def __init__(self, orig_image, eps):
         super(Bound, self).__init__()
 
-        # max(-1, -a_ij / eps)
-        self.input_eps_lo = (- a_i0 / eps).clamp(min=-1).flatten().view(-1, 1)
+        # max(-1, - orig_image / eps)
+        self.input_eps_lo = (- orig_image / eps).clamp(min=-1).flatten()
 
-        # min(1, (1 - a_ij) / eps)
-        self.input_eps_hi = ((1 - a_i0) / eps).clamp(max=1).flatten().view(-1, 1)
+        # min(1, (1 - orig_image) / eps)
+        self.input_eps_hi = ((1 - orig_image) / eps).clamp(max=1).flatten()
 
         self.dim = len(self.input_eps_hi) + 1
 
     def lower_bound(self, x):
         return x[0, ...] - torch.sum(torch.abs(x[self.dim:, ...]), dim=0) + \
                torch.sum(
-                   torch.min(x[1:self.dim, ...] * self.input_eps_lo,
-                             x[1:self.dim, ...] * self.input_eps_hi),
+                   torch.min(torch.einsum('k..., k -> k...', x[1:self.dim, ...], self.input_eps_lo),
+                             torch.einsum('k..., k -> k...', x[1:self.dim, ...], self.input_eps_hi)),
                    dim=0)
 
     def upper_bound(self, x):
-        return x[0, ...] - torch.sum(torch.abs(x[self.dim:, ...]), dim=0) + \
+        return x[0, ...] + torch.sum(torch.abs(x[self.dim:, ...]), dim=0) + \
                torch.sum(
-                   torch.max(x[1:self.dim, ...] * self.input_eps_lo,
-                             x[1:self.dim, ...] * self.input_eps_hi),
+                   torch.max(torch.einsum('k..., k -> k...', x[1:self.dim, ...], self.input_eps_lo),
+                             torch.einsum('k..., k -> k...', x[1:self.dim, ...], self.input_eps_hi)),
                    dim=0)
 
 

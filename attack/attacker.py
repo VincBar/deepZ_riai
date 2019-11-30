@@ -156,7 +156,6 @@ def verify(data, labels, eps, n_jobs=4, maxsec=120, tensorboard=False, pairwise=
     for i, dta in enumerate(zip(data, labels)):
         digit, label = dta
         netZs = load_nets(eps=eps[:, i], target=label, zonotope=True)
-        print(len(netZs), eps[:, i])
 
         non_robust_net = np.where(eps[:, i] < np.inf)[0]
         netZs_epss = [(netZ, eps[j, i]) for j, netZ in enumerate(netZs.values()) if j in non_robust_net]
