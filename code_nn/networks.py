@@ -185,6 +185,7 @@ class ZModule(nn.Module):
                 layer.eps[inp < eps]= (inp[inp < eps]+eps)/2
                 layer.eps[inp > (1-eps)]=(1-inp[inp > (1-eps)]+eps)/2
             if isinstance(layer,ToZConv):
+                inp=inputs
                 layer.eps[inp < eps] = (inp[inp < eps]+eps)/2
                 layer.eps[inp > (1-eps)] = (1-inp[inp > (1-eps)]+eps)/2
 
@@ -222,8 +223,6 @@ class NNFullyConnectedZ(ZModule):
             prev_fc_size = fc_size
         layers += [EndLayerZ(target, prev_fc_size)]
         self.layers = nn.Sequential(*layers)
-        self.filter_low = torch.zeros(input_size*input_size)
-        self.filter_up = torch.zeros(input_size*input_size)
 
     def forward(self, x):
         return self.layers(x)
