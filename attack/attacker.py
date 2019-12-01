@@ -285,40 +285,42 @@ def attack():
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Attacking neural network verification using DeepZ relaxation')
-    parser.add_argument('--pairwise', type=int, choices=[0, 1], required=True, help='which loss')
-    parser.add_argument('--nr_eps', type=int, required=True)
-    parser.add_argument('--n_jobs_per_digit', type=int, required=True)
-    parser.add_argument('--maxsec', type=int, required=True)
-    parser.add_argument('--check_smaller', choices=[0, 1], type=int, required=True)
-    parser.add_argument('--n_digits', type=int, required=True)
-    parser.add_argument('--n_jobs', type=int, required=True)
+    # parser = argparse.ArgumentParser(description='Attacking neural network verification using DeepZ relaxation')
+    # parser.add_argument('--pairwise', type=int, choices=[0, 1], required=True, help='which loss')
+    # parser.add_argument('--nr_eps', type=int, required=True)
+    # parser.add_argument('--n_jobs_per_digit', type=int, required=True)
+    # parser.add_argument('--maxsec', type=int, required=True)
+    # parser.add_argument('--check_smaller', choices=[0, 1], type=int, required=True)
+    # parser.add_argument('--n_digits', type=int, required=True)
+    # parser.add_argument('--n_jobs', type=int, required=True)
+    #
+    # args = parser.parse_args()
+    #
+    # # print('Spawning task to ' + str(args.n_jobs * args.n_jobs_per_digit) + 'jobs.')
+    #
+    # cln_data, true_labels = load_data(args.n_digits)
+    # pd.options.display.max_columns = 12
+    #
+    # # don't use joblib with tensorboard !! set n_jobs=1 to deactivate joblib
+    # jobs = [partial(check_adv_first, data=cln_data[i][None, ...], labels=true_labels[i][None, ...],
+    #                 pairwise=args.pairwise, nr_eps=args.nr_eps,
+    #                 n_jobs=args.n_jobs_per_digit, maxsec=args.maxsec,
+    #                 tensorboard=False, check_smaller=args.check_smaller)
+    #         for i in range(args.n_digits)]
+    #
+    # out = run_jobs(jobs, n_jobs=args.n_jobs)
+    #
+    # # put correct digit identifiers
+    # for i, df in enumerate(out):
+    #     df['digit_id'] = i
+    #
+    # dfs = pd.concat(out, axis=0)
+    # print(dfs)
+    #
+    # tim = strftime("%Y-%m-%d-%H_%M_%S", gmtime())
+    # dfs.to_pickle('pd_attack_dfs' + '_' + 'pairwise' + str(args.pairwise) + '_' + tim + '.pkl')
 
-    args = parser.parse_args()
-
-    # print('Spawning task to ' + str(args.n_jobs * args.n_jobs_per_digit) + 'jobs.')
-
-    cln_data, true_labels = load_data(args.n_digits)
-    pd.options.display.max_columns = 12
-
-    # don't use joblib with tensorboard !! set n_jobs=1 to deactivate joblib
-    jobs = [partial(check_adv_first, data=cln_data[i][None, ...], labels=true_labels[i][None, ...],
-                    pairwise=args.pairwise, nr_eps=args.nr_eps,
-                    n_jobs=args.n_jobs_per_digit, maxsec=args.maxsec,
-                    tensorboard=False, check_smaller=args.check_smaller)
-            for i in range(args.n_digits)]
-
-    out = run_jobs(jobs, n_jobs=args.n_jobs)
-
-    # put correct digit identifiers
-    for i, df in enumerate(out):
-        df['digit_id'] = i
-
-    dfs = pd.concat(out, axis=0)
-    print(dfs)
-
-    tim = strftime("%Y-%m-%d-%H_%M_%S", gmtime())
-    dfs.to_pickle('pd_attack_dfs' + '_' + 'pairwise' + str(args.pairwise) + '_' + tim + '.pkl')
+    attack()
 
 
 

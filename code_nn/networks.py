@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.nn.modules.flatten import Flatten
 import numpy as np
 
+
 #
 # def lower_bound(x,filter_low,filter_up):
 #     filt=(heaviside(-x[1:785, ...])*filter_low+filter_up*heaviside(x[1:785])+((filter_low+filter_up)-1)*torch.ones(x[1:785,...].shape))
@@ -15,28 +16,11 @@ import numpy as np
 #
 
 def lower_bound(x):
-    return x[0,...]-torch.sum(torch.abs(x[1:,...]), dim=0)
+    return x[0, ...] - torch.sum(torch.abs(x[1:, ...]), dim=0)
+
+
 def upper_bound(x):
-    return x[0,...]+torch.sum(torch.abs(x[1:,...]), dim=0)
-
-        # min(1, (1 - orig_image) / eps)
-        self.input_eps_hi = ((1 - orig_image) / eps).clamp(max=1).flatten()
-
-        self.dim = len(self.input_eps_hi) + 1
-
-    def lower_bound(self, x):
-        return x[0, ...] - torch.sum(torch.abs(x[self.dim:, ...]), dim=0) + \
-               torch.sum(
-                   torch.min(torch.einsum('k..., k -> k...', x[1:self.dim, ...], self.input_eps_lo),
-                             torch.einsum('k..., k -> k...', x[1:self.dim, ...], self.input_eps_hi)),
-                   dim=0)
-
-    def upper_bound(self, x):
-        return x[0, ...] + torch.sum(torch.abs(x[self.dim:, ...]), dim=0) + \
-               torch.sum(
-                   torch.max(torch.einsum('k..., k -> k...', x[1:self.dim, ...], self.input_eps_lo),
-                             torch.einsum('k..., k -> k...', x[1:self.dim, ...], self.input_eps_hi)),
-                   dim=0)
+    return x[0, ...] + torch.sum(torch.abs(x[1:, ...]), dim=0)
 
 
 def is_scalar(x):
@@ -195,25 +179,25 @@ class Conv(nn.Module):
 
 
 class ZModule(nn.Module):
-    def initialize(self,inputs,eps):
-        out=inputs
+    def initialize(self, inputs, eps):
+        out = inputs
 
-        for i,layer in enumerate(self.layers):
-            if isinstance(layer,ToZLinear):
-                inp=inputs.flatten(start_dim=1)
-                layer.eps[inp < eps]= (inp[inp < eps]+eps)/2
-                layer.eps[inp > (1-eps)]=(1-inp[inp > (1-eps)]+eps)/2
-            if isinstance(layer,ToZConv):
-                layer.eps[inp < eps] = (inp[inp < eps]+eps)/2
-                layer.eps[inp > (1-eps)] = (1-inp[inp > (1-eps)]+eps)/2
+        for i, layer in enumerate(self.layers):
+            if isinstance(layer, ToZLinear):
+                inp = inputs.flatten(start_dim=1)
+                layer.eps[inp < eps] = (inp[inp < eps] + eps) / 2
+                layer.eps[inp > (1 - eps)] = (1 - inp[inp > (1 - eps)] + eps) / 2
+            if isinstance(layer, ToZConv):
+                inp = inputs.flatten(start_dim=1)
+                layer.eps[inp < eps] = (inp[inp < eps] + eps) / 2
+                layer.eps[inp > (1 - eps)] = (1 - inp[inp > (1 - eps)] + eps) / 2
 
             if isinstance(layer, ReLUZ):
                 with torch.no_grad():
-
                     l = lower_bound(out)
                     u = upper_bound(out)
 
-                    layer.lambdas.copy_(u/(u-l))
+                    layer.lambdas.copy_(u / (u - l))
                     layer.lambdas.requires_grad = True
 
             if isinstance(layer, LinearZ) or isinstance(layer, ConvZ):
@@ -221,11 +205,6 @@ class ZModule(nn.Module):
                 layer.bias.requires_grad = False
 
             out = self.layers[i](out)
-
-            if isinstance(layer, EndLayerZ):
-                layer.bound = bound
-
-            out = layer(out)
 
 
 class NNFullyConnectedZ(ZModule):
@@ -239,7 +218,7 @@ class NNFullyConnectedZ(ZModule):
         super(NNFullyConnectedZ, self).__init__()
         prev_fc_size = input_size * input_size
 
-        layers = [Normalization(device), ToZLinear(eps,prev_fc_size), Flatten(start_dim=1), EpsNorm()]
+        layers = [Normalization(device), ToZLinear(eps, prev_fc_size), Flatten(start_dim=1), EpsNorm()]
         for i, fc_size in enumerate(fc_layers):
             layers += [LinearZ(prev_fc_size, fc_size)]
             if i + 1 < len(fc_layers):
@@ -247,8 +226,8 @@ class NNFullyConnectedZ(ZModule):
             prev_fc_size = fc_size
         layers += [EndLayerZ(target, prev_fc_size)]
         self.layers = nn.Sequential(*layers)
-        self.filter_low = torch.zeros(input_size*input_size)
-        self.filter_up = torch.zeros(input_size*input_size)
+        self.filter_low = torch.zeros(input_size * input_size)
+        self.filter_up = torch.zeros(input_size * input_size)
 
     def forward(self, x):
         return self.layers(x)
@@ -270,7 +249,7 @@ class NNConvZ(ZModule):
         prev_channels = 1
         height = width = input_size
 
-        layers = [Normalization(device), ToZConv(eps,prev_channels,height,width), EpsNorm()]
+        layers = [Normalization(device), ToZConv(eps, prev_channels, height, width), EpsNorm()]
 
         for n_channels, kernel_size, stride, padding in conv_layers:
             height, width = self._compute_resulting_height_width(height, width, kernel_size, stride, 2 * padding)
@@ -308,20 +287,22 @@ class ToZ(nn.Module):
     def __init__(self):
         super(ToZ, self).__init__()
 
-
     def forward(self, x):
         pad = np.prod(x.shape[1:])
         return extend_Z(x, self.eps, torch.ones([pad]))
 
+
 class ToZConv(ToZ):
-    def __init__(self,eps,c,h,w):
+    def __init__(self, eps, c, h, w):
         super(ToZConv, self).__init__()
-        self.eps=eps*torch.ones([1,c,h,w])*eps
+        self.eps = eps * torch.ones([1, c, h, w]) * eps
+
 
 class ToZLinear(ToZ):
-    def __init__(self,eps,fc_size):
+    def __init__(self, eps, fc_size):
         super(ToZLinear, self).__init__()
-        self.eps=torch.ones([1, fc_size])*eps
+        self.eps = torch.ones([1, fc_size]) * eps
+
 
 class LinearZ(nn.Linear):
     """
@@ -364,10 +345,9 @@ class EndLayerZ(nn.Module):
     This layer computes the difference between the pseudo-probability outputs for all digits and the target digit.
     """
 
-    def __init__(self, target, size, bound=None):
+    def __init__(self, target, size):
         super(EndLayerZ, self).__init__()
         self.target = target
-        self.bound = bound
 
         self.weight = torch.zeros([size, size])
         self.weight[:, target] = 1
@@ -375,7 +355,7 @@ class EndLayerZ(nn.Module):
 
     def forward(self, x):
         x = nn.functional.linear(x, self.weight, bias=None)
-        out = self.bound.lower_bound(x)
+        out = lower_bound(x)
         return out
 
 
@@ -390,16 +370,15 @@ class ReLUZ(nn.Module):
     this is.
     """
 
-    def __init__(self, bound=None):
+    def __init__(self):
         super(ReLUZ, self).__init__()
         self.relu = nn.ReLU()
-        self.bound = bound
 
     def forward(self, x):
         # TODO: I don't know if the following is computed in parallel, if written like this
         # input is (K, c_in, H, W) or (K, fc_size)
 
-        l, u = self.bound.lower_bound(x)[None, :], self.bound.upper_bound(x)[None, :]
+        l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
         _l = heaviside(l)
         l_0_u = (heaviside(u) * heaviside(-l))
 
