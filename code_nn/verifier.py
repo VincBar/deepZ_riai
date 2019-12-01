@@ -27,12 +27,9 @@ def check_weights(net_name, netZ):
             print(param,": Net parameter requires gradient ?", val.requires_grad)
 
 
-def analyze(net, inputs, true_label,pairwise=True, tensorboard=True, maxsec=None, time_info=False):
+def analyze(net, inputs, true_label, eps,pairwise=True, tensorboard=True, maxsec=None, time_info=False):
     # TODO: think hard about this one, we want to avoid local minima
     optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
-
-    net.filter_low=(inputs==0).float().view(1,-1)
-    net.filter_up=(inputs==1).float().view(1,-1)
 
     if tensorboard:
         from torch.utils.tensorboard import SummaryWriter
@@ -44,13 +41,19 @@ def analyze(net, inputs, true_label,pairwise=True, tensorboard=True, maxsec=None
 
         start_time = time.time()
         in_time = True
+
+        net.initialize(inputs, eps)
+
+        inputs[inputs < eps] = (inputs[inputs < eps] + eps) / 2
+        inputs[inputs > (1 - eps)] = (1 + inputs[inputs > (1 - eps)] - eps) / 2
+
         while not not non_verified_digits and in_time:
             i = list(non_verified_digits)[0]
 
             # initialize lambdas,
             # TODO: do we restart from scratch for each digit? we could try warm starting, maybe for 'similar' digits
             # TODO: search good initialization
-            net.initialize(inputs)
+
 
             writer = None
             if tensorboard:
@@ -73,7 +76,10 @@ def analyze(net, inputs, true_label,pairwise=True, tensorboard=True, maxsec=None
 
     else:
         loss = GlobalLoss(0.1)
-        net.initialize(inputs)
+        net.initialize(inputs, eps)
+
+        inputs[inputs < eps] = (inputs[inputs < eps] + eps) / 2
+        inputs[inputs > (1 - eps)] = (1 + inputs[inputs > (1 - eps)] - eps) / 2
 
         writer = None
         if tensorboard:
@@ -208,7 +214,7 @@ def main():
     start_time = time.time()
     #clamp_ind=((inputs-eps)==0)
     #inputs[clamp_ind]=eps/2
-    if analyze(netZ, inputs, true_label, pairwise=True, maxsec=100000):
+    if analyze(netZ, inputs, true_label,eps, pairwise=True, maxsec=100000):
         print('verified')
         print(time.time()-start_time)
     else:
