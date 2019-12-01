@@ -4,9 +4,9 @@ import time
 
 #sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
 import sys
-sys.path.append('..')
+sys.path.insert(0, '..')
 
-from code_nn.networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, \
+from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, \
     check_lambdas, ClipLambdas
 from time import strftime, gmtime
 from collections import OrderedDict
@@ -213,10 +213,10 @@ def main():
     assert pred_label == true_label
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
-    # start_time = time.time()
+    start_time = time.time()
     if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=120, tensorboard=False):
         print('verified')
-        # print(time.time()-start_time)
+        print(time.time()-start_time)
     else:
         print('not verified')
 

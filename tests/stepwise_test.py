@@ -1,8 +1,8 @@
 import torch
 import sys
 sys.path.append('D:/Dokumente/GitHub/RAI_proj/code_nn')
-from code_nn.networks import NNFullyConnectedZ,PairwiseLoss
-from code_nn.verifier import loadZ, analyze,run_optimization
+from code.networks import NNFullyConnectedZ,PairwiseLoss
+from code.verifier import loadZ, analyze,run_optimization
 from collections import OrderedDict
 DEVICE='cpu'
 import numpy as np
