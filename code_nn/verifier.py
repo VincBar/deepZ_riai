@@ -214,14 +214,14 @@ def main():
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
     start_time = time.time()
-    if analyze(netZ, inputs, true_label, eps, pairwise=False, maxsec=120, tensorboard=True):
+    if analyze(netZ, inputs, true_label, eps, pairwise=False, maxsec=120, tensorboard=False):
         print('verified')
-        print(time.time()-start_time)
+        # print(time.time()-start_time)
     else:
         print('not verified')
 
-    check_weights(args.net, netZ)
-    check_lambdas(net)
+    # check_weights(args.net, netZ)
+    # check_lambdas(net)
 
 
 if __name__ == '__main__':
