@@ -1,7 +1,7 @@
 import torch
 import sys
 sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
-from networks import ReLUZLinear
+from code_nn.networks import ReLUZLinear, extend_Z
 
 # Let x be the current zonotope. In the linear case x.shape = (K, fc_size).
 # Now we want to apply the DeepZ relaxation on a linear Layer. In our current approach it should add fc_size parameters
@@ -19,21 +19,19 @@ def test():
     # TODO: ERROR in propagation of RELUZ a_00 should be 0 but is 6, corrected
     # TODO: ERROR in propagation of RELUZ a_01 should be 10 but is 6, corrected maybe online description is wrong
     x_out=reluz(x)
+
     print(x_out.shape[0]-K==fc_size)
-    # TODO: Currently all lambdas are initialized as one. Maybe the initalization can be learned number specific.
-    # TODO: Only add rows that are actually relevant
+
     print(x_out)
 
     x_true=torch.Tensor([[ 0.0000, 10.0000,  1.5000,  1.5000,  1.5000],
             [ 0.0000,  1.0000,  1.0000,  1.0000,  1.0000],
             [ 0.0000,  1.0000,  1.0000,  1.0000,  1.0000],
-            [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
-            [ 0.0000, -0.0000,  0.0000,  0.0000,  0.0000],
             [ 0.0000,  0.0000,  0.5000,  0.0000,  0.0000],
             [ 0.0000,  0.0000,  0.0000,  0.5000,  0.0000],
             [ 0.0000,  0.0000,  0.0000,  0.0000,  0.5000]])
 
-    print(x_out==x_true)
+    assert torch.all((x_out==x_true))
 
 if __name__ == '__main__':
     test()

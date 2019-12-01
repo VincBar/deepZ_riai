@@ -8,3 +8,5 @@ do
 		python verifier.py --net ${net} --spec ../test_cases/${net}/${spec}
 	done
 done
+
+

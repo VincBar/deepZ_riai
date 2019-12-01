@@ -1,20 +1,35 @@
 import argparse
 import torch
-import sys
 import time
 
-sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
+#sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
+import sys
+sys.path.append('..')
 
-from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss
+from code_nn.networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, \
+    check_lambdas, ClipLambdas
 from time import strftime, gmtime
 from collections import OrderedDict
+import numpy as np
 
-DEVICE = 'cpu'
+use_cuda = torch.cuda.is_available()
+DEVICE = torch.device("cuda" if use_cuda else "cpu")
+DEVICE = torch.device("cpu")
 INPUT_SIZE = 28
 NET_CHOICES = ['fc1', 'fc2', 'fc3', 'fc4', 'fc5', 'conv1', 'conv2', 'conv3', 'conv4', 'conv5']
 
 
-def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=None):
+def check_weights(net_name, netZ):
+    state_dict_check = torch.load('../mnist_nets/%s.pt' % net_name, map_location=torch.device(DEVICE))
+    for key, val in netZ.state_dict().items():
+        pre, nr, param = key.split('.')
+        nr = str(int(nr) - 2)
+        if param != 'lambdas':
+            print(param,": All net parameters equal to original value ?", torch.all(state_dict_check['.'.join([pre, nr, param])] == val))
+            print(param,": Net parameter requires gradient ?", val.requires_grad)
+
+
+def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxsec=None, time_info=False):
     # TODO: think hard about this one, we want to avoid local minima
     optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
 
@@ -24,17 +39,23 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
 
     if pairwise:
         trained_digits = non_verified_digits = set(range(10)) - {true_label}
-        losses = dict([(i, PairwiseLoss(net, trained_digit=i)) for i in trained_digits])
+        losses = dict([(i, PairwiseLoss(trained_digit=i)) for i in trained_digits])
 
         start_time = time.time()
         in_time = True
+
+        net.initialize(inputs, eps)
+
+        inputs[inputs < eps] = (inputs[inputs < eps] + eps) / 2
+        inputs[inputs > (1 - eps)] = (1 + inputs[inputs > (1 - eps)] - eps) / 2
+
         while not not non_verified_digits and in_time:
             i = list(non_verified_digits)[0]
 
             # initialize lambdas,
             # TODO: do we restart from scratch for each digit? we could try warm starting, maybe for 'similar' digits
             # TODO: search good initialization
-            net.initialize()
+
 
             writer = None
             if tensorboard:
@@ -44,21 +65,33 @@ def analyze(net, inputs, true_label, pairwise=True, tensorboard=True, maxsec=Non
             if maxsec is not None:
                 remaining_time = maxsec - (time.time() - start_time)
 
-            res = run_optimization(net, inputs, losses[i], optimizer, writer=writer, maxsec=remaining_time)
-            non_verified_digits -= {i}
+            losses[i].non_verified = list(non_verified_digits)
+            res, out = run_optimization(net, inputs, losses[i], optimizer, writer=writer, maxsec=remaining_time)
+
+
+            # check which digits can be cancelled
+            # print(np.where(out > 0)[0], non_verified_digits)
+            non_verified_digits -= set(np.where(out > 0)[0])
 
             if maxsec is not None:
                 in_time = (time.time() - start_time) < maxsec
 
     else:
-        loss = GlobalLoss(net, 0.1)
-        net.initialize()
+        loss = GlobalLoss(0.1)
+        net.initialize(inputs, eps)
+
+        inputs[inputs < eps] = (inputs[inputs < eps] + eps) / 2
+        inputs[inputs > (1 - eps)] = (1 + inputs[inputs > (1 - eps)] - eps) / 2
 
         writer = None
         if tensorboard:
             writer = SummaryWriter('../runs/global_' + tim)
 
-        res = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec)
+        start_time = time.time()
+        res, out = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec)
+
+    if time_info:
+        return res, time.time() - start_time
 
     return res
 
@@ -72,9 +105,15 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
     while not is_verified and in_time:
         counter += 1
         net.zero_grad()
-        lss, is_verified = loss(inputs)
+
+        out = net(inputs)
+        lss, is_verified = loss(out)
+
         lss.backward()
         optimizer.step()
+        net.apply(ClipLambdas())
+
+        # assert check_lambdas(net)
 
         if writer is not None:
             writer.add_scalar('training loss', lss, counter)
@@ -83,20 +122,29 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
             in_time = (time.time() - start_time) < maxsec
 
     if not in_time:
-        return 0
+        return 0, out
 
-    return 1
+    return 1, out
 
 
-def load_Z(net, state_dict):
+def fix_weights(net):
+    fixer = WeightFixer()
+    net = net.apply(fixer)
+
+    return net
+
+
+def loadZ(net, state_dict):
     # there is one layer more in netZ (ToZ), so shift layer names.
     state_dict_shifted = OrderedDict([])
     for key, val in state_dict.items():
         pre, nr, param = key.split('.')
-        nr = str(int(nr) + 1)
-        state_dict_shifted['.'.join([pre, nr, param])] = val.requires_grad_(False)
+        nr = str(int(nr) + 2)
+        state_dict_shifted['.'.join([pre, nr, param])] = val
 
     net.load_state_dict(state_dict_shifted, strict=False)
+    net = fix_weights(net)
+    return net
 
 
 def _generate_nets(typ, eps, true_label, device, *args, **kwargs):
@@ -140,7 +188,7 @@ def load_net(net_name, eps, target):
 
     state_dict = torch.load('../mnist_nets/%s.pt' % net_name, map_location=torch.device(DEVICE))
     net.load_state_dict(state_dict)
-    load_Z(netZ, state_dict)
+    netZ = loadZ(netZ, state_dict)
 
     return net, netZ
 
@@ -164,10 +212,16 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(netZ, inputs, true_label, pairwise=False, maxsec=120):
+    torch.set_printoptions(linewidth=300, edgeitems=5)
+    start_time = time.time()
+    if analyze(netZ, inputs, true_label, eps, pairwise=False, maxsec=120, tensorboard=True):
         print('verified')
+        print(time.time()-start_time)
     else:
         print('not verified')
+
+    check_weights(args.net, netZ)
+    check_lambdas(net)
 
 
 if __name__ == '__main__':

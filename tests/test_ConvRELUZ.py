@@ -1,7 +1,7 @@
 import torch
 import sys
 sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
-from networks import ReLUZConv
+from networks import ReLUZConv,extend_Z
 
 # Let x be the current zonotope. In the conv case x.shape = (K, c,h,w).
 # Now we want to apply the DeepZ relaxation on the convolution layer. In our current approach it should add fc_size parameters

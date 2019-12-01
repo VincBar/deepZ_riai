@@ -43,7 +43,7 @@ def pad_K_dim(x, pad):
     return nn.functional.pad(x, padding, mode='constant', value=0)
 
 
-def extend_Z(x, vals):
+def extend_Z(x, vals, l_0_u):
     """
     Extend the K dimension of input x by the number of ReLU's put on an affine layer in the original NN and update the
     values in the K dim by vals. (see j=K+i and j=else in case distinction in 2.2 in project paper).
@@ -52,14 +52,49 @@ def extend_Z(x, vals):
     :return:
     """
     K = x.shape[0]
-    pad = np.prod(x.shape[1:])
-    x = pad_K_dim(x, pad)
+    pad = l_0_u.flatten().sum().int()
+    pad2 = np.prod(x.shape[1:])
+    x = pad_K_dim(x, pad.numpy())
     if is_scalar(vals):
-        vals = vals * torch.ones(pad)
+        vals = vals * torch.ones(pad2)
 
     # TODO: check this!!
-    x[K:, ...] = torch.diagflat(vals).view([pad] + list(x.shape[1:]))
+
+    x[K:, ...] = torch.diagflat(vals).view([pad2] + list(x.shape[1:]))[l_0_u.bool().flatten(), ...]
     return x
+
+
+class ClipLambdas(object):
+    def __call__(self, module):
+        # filter the variables to get the ones you want
+        if hasattr(module, 'lambdas'):
+            lambdas = module.lambdas.data
+            lambdas = lambdas.clamp(0, 1)
+            module.lambdas.data = lambdas
+
+
+class WeightFixer(object):
+    def __call__(self, module):
+        # filter the variables to get the ones you want
+        if hasattr(module, 'weight'):
+            module.weight.requires_grad = False
+        if hasattr(module, 'bias'):
+            module.bias.requires_grad = False
+
+
+def check_lambdas(net):
+    ret = torch.tensor([True])
+    for key, val in net.state_dict().items():
+        pre, nr, param = key.split('.')
+        if param == 'lambdas':
+            up = torch.all(val <= 1)
+            lo = torch.all(val >= 0)
+            ret = ret & lo & up
+            if not lo:
+                print('lo', val[val < 0])
+            if not up:
+                print('up', val[val > 1])
+    return ret
 
 
 class Normalization(nn.Module):
@@ -71,6 +106,16 @@ class Normalization(nn.Module):
 
     def forward(self, x):
         return (x - self.mean) / self.sigma
+
+
+class EpsNorm(nn.Module):
+    def __init__(self):
+        super(EpsNorm, self).__init__()
+        self.sigma = 0.3081
+
+    def forward(self, x):
+        x[1:, ...] = x[1:, ...] / self.sigma
+        return x
 
 
 class FullyConnected(nn.Module):
@@ -122,15 +167,32 @@ class Conv(nn.Module):
 
 
 class ZModule(nn.Module):
-    def initialize(self):
-        for layer in self.layers:
+    def initialize(self, inputs, eps):
+        out = inputs
+
+        for i,layer in enumerate(self.layers):
+            if isinstance(layer,ToZLinear):
+                inp=inputs.flatten(start_dim=1)
+                layer.eps[inp < eps]= (inp[inp < eps]+eps)/2
+                layer.eps[inp > (1-eps)]=(1-inp[inp > (1-eps)]+eps)/2
+            if isinstance(layer,ToZConv):
+                inp=inputs
+                layer.eps[inp < eps] = (inp[inp < eps]+eps)/2
+                layer.eps[inp > (1-eps)] = (1-inp[inp > (1-eps)]+eps)/2
+
             if isinstance(layer, ReLUZ):
-                layer.lambdas = nn.init.constant_(layer.lambdas, 0.99)
-                layer.lambdas.requires_grad = True
+                with torch.no_grad():
+                    l = lower_bound(out)
+                    u = upper_bound(out)
+
+                    layer.lambdas.copy_(u / (u - l))
+                    layer.lambdas.requires_grad = True
 
             if isinstance(layer, LinearZ) or isinstance(layer, ConvZ):
                 layer.weight.requires_grad = False
                 layer.bias.requires_grad = False
+
+            out = self.layers[i](out)
 
 
 class NNFullyConnectedZ(ZModule):
@@ -142,9 +204,9 @@ class NNFullyConnectedZ(ZModule):
 
     def __init__(self, device, input_size, fc_layers, eps, target):
         super(NNFullyConnectedZ, self).__init__()
-
-        layers = [Normalization(device), ToZ(eps), Flatten(start_dim=1)]
         prev_fc_size = input_size * input_size
+
+        layers = [Normalization(device), ToZLinear(eps, prev_fc_size), Flatten(start_dim=1), EpsNorm()]
         for i, fc_size in enumerate(fc_layers):
             layers += [LinearZ(prev_fc_size, fc_size)]
             if i + 1 < len(fc_layers):
@@ -170,9 +232,10 @@ class NNConvZ(ZModule):
         self.input_size = input_size
         self.n_class = n_class
 
-        layers = [Normalization(device), ToZ(eps)]
         prev_channels = 1
         height = width = input_size
+
+        layers = [Normalization(device), ToZConv(eps, prev_channels, height, width), EpsNorm()]
 
         for n_channels, kernel_size, stride, padding in conv_layers:
             height, width = self._compute_resulting_height_width(height, width, kernel_size, stride, 2 * padding)
@@ -204,15 +267,27 @@ class NNConvZ(ZModule):
 class ToZ(nn.Module):
     """
     This layer takes an input tensor and inserts the K dimension for the initial zonotope of the image
-    with perturbation eps. The output will be (N, K, ...) where K = nr of input nodes (fc_size, height * width).
+    with perturbation eps. The output will be (K, ...) where K = nr of input nodes (fc_size, height * width).
     """
 
-    def __init__(self, eps):
+    def __init__(self):
         super(ToZ, self).__init__()
-        self.eps = eps
 
     def forward(self, x):
-        return extend_Z(x, self.eps)
+        pad = np.prod(x.shape[1:])
+        return extend_Z(x, self.eps, torch.ones([pad]))
+
+
+class ToZConv(ToZ):
+    def __init__(self, eps, c, h, w):
+        super(ToZConv, self).__init__()
+        self.eps=eps*torch.ones([1,c,h,w])
+
+
+class ToZLinear(ToZ):
+    def __init__(self, eps, fc_size):
+        super(ToZLinear, self).__init__()
+        self.eps = torch.ones([1, fc_size]) * eps
 
 
 class LinearZ(nn.Linear):
@@ -221,6 +296,12 @@ class LinearZ(nn.Linear):
     entry in the K dim. This is achieved by treating each entry in the K dim as a seperate member of a batch by folding
     the K dim into the batch dim. This should leverage PyTorch's parallel computation.
     """
+
+    def __init__(self, *args, **kwargs):
+        super(LinearZ, self).__init__(*args, **kwargs)
+        self.weight.requires_grad = False
+        self.bias.requires_grad = False
+
     def forward(self, x):
         out = nn.functional.linear(x, self.weight, bias=None)
         out[0, :] += self.bias
@@ -233,6 +314,11 @@ class ConvZ(nn.Conv2d):
     entry in the K dim. This is achieved by treating each entry in the K dim as a seperate member of a batch by folding
     the K dim into the batch dim. This should leverage PyTorch's parallel computation.
     """
+
+    def __init__(self, *args, **kwargs):
+        super(ConvZ, self).__init__(*args, **kwargs)
+        self.weight.requires_grad = False
+        self.bias.requires_grad = False
 
     def forward(self, x):
         out = nn.functional.conv2d(x, weight=self.weight, bias=None, stride=self.stride, padding=self.padding)
@@ -249,12 +335,14 @@ class EndLayerZ(nn.Module):
         super(EndLayerZ, self).__init__()
         self.target = target
 
-        self.weights = torch.zeros([size, size])
-        self.weights[:, target] = 1
-        self.weights -= torch.diag(torch.ones(size))
+        self.weight = torch.zeros([size, size])
+        self.weight[:, target] = 1
+        self.weight -= torch.diag(torch.ones(size))
 
     def forward(self, x):
-        return lower_bound(torch.einsum('ji, ki -> kj', [self.weights, x]))
+        x = nn.functional.linear(x, self.weight, bias=None)
+        out = lower_bound(x)
+        return out
 
 
 class ReLUZ(nn.Module):
@@ -280,50 +368,61 @@ class ReLUZ(nn.Module):
         _l = heaviside(l)
         l_0_u = (heaviside(u) * heaviside(-l))
 
+        d_1 = -l * self.lambdas
+        d_2 = u * (1 - self.lambdas)
+
+        # TODO: check if lambdas are bounded between [0,1]
+        # check completed
         # TODO: check if broadcasting of lambdas works as expected
         # check completed see test_conv_pad
-        out = _l * x + l_0_u * self.lambdas * x
-        out[0, ...] -= l_0_u[0,...]*(self.lambdas * l / 2)[0, ...]
 
-        return extend_Z(out, (- self.lambdas * l / 2 * l_0_u))
+        # compute shift
+        d = torch.max(d_1, d_2)
+
+        out = _l * x + l_0_u * self.lambdas * x
+        out[0, ...] += l_0_u[0, ...] * (d / 2)[0, ...]
+        return extend_Z(out, d / 2 * l_0_u, l_0_u)
+
+        # # TODO: I don't know if the following is computed in parallel, if written like this  # # input is (K, c_in, H, W) or (K, fc_size)  #  # l_t, u_t = lower_bound(x)[None, :], upper_bound(x)[None, :]  # _l_t = heaviside(l_t)  # l_0_u_t = (heaviside(u_t) * heaviside(-l_t))  #  # lambda_crit_t = u_t / (u_t - l_t)  # is_lower = self.lambdas < lambda_crit_t  # is_larger = torch.logical_not(is_lower)  #  # # TODO: check if lambdas are bounded between [0,1]  # # TODO: check if broadcasting of lambdas works as expected  # # check completed see test_conv_pad  #  # # compute shift  # d_t = torch.zeros(self.lambdas.shape)  # d_t[is_larger] = - l_t[is_larger]  # d_t[is_lower] = (1 - self.lambdas[is_lower])/self.lambdas[is_lower] * u_t[is_lower]  #  # out_t = _l_t * x + l_0_u_t * self.lambdas * x  # out_t[0, ...] += l_0_u_t[0, ...] * (self.lambdas * d_t / 2)[0, ...]  # torch.all(out_t==out)  #  # return extend_Z(out_t, self.lambdas * d_t/2 * l_0_u_t, l_0_u_t)
 
 
 class ReLUZConv(ReLUZ):
-    def __init__(self, n_channels, height, width):
-        super(ReLUZConv, self).__init__()
-
+    def __init__(self, n_channels, height, width, *args, **kwargs):
+        super(ReLUZConv, self).__init__(*args, **kwargs)
+        # TODO: Currently all lambdas are initialized as one.
+        # Maybe the initalization can be learned number specific, smallest area
+        # TODO: Only add rows that are actually relevant
         self.lambdas = nn.Parameter(torch.ones([1, n_channels, height, width]))
         self.lambdas.requires_grad_()
 
 
 class ReLUZLinear(ReLUZ):
-    def __init__(self, fc_size):
-        super(ReLUZLinear, self).__init__()
+    def __init__(self, fc_size, *args, **kwargs):
+        super(ReLUZLinear, self).__init__(*args, **kwargs)
 
         self.lambdas = nn.Parameter(torch.ones([1, fc_size]))
         self.lambdas.requires_grad_()
 
 
 class PairwiseLoss(nn.Module):
-    def __init__(self, net, trained_digit):
+    def __init__(self, trained_digit):
         super(PairwiseLoss, self).__init__()
-        self.net = net
         self.trained_digit = trained_digit
+        self.non_verified = [self.trained_digit]
 
     def forward(self, x):
-        loss = - self.net(x)[self.trained_digit]
-        is_verified = heaviside(-loss)
+        loss = - x[self.trained_digit]
+        is_verified = torch.sum(heaviside(x)[torch.LongTensor(self.non_verified)]) > 0
         return loss, is_verified
 
 
 class GlobalLoss(nn.Module):
-    def __init__(self, net, reg):
+    def __init__(self, reg):
         super(GlobalLoss, self).__init__()
-        self.net = net
         self.reg = reg
 
     def forward(self, x):
-        out = self.net(x)
-        loss = - torch.sum(out) + self.reg / out.shape[0] * torch.sum(torch.pdist(out.view((out.shape[0], 1)), p=1))
-        is_verified = torch.prod(heaviside(out, zero_pos=True))
+        loss = - torch.sum(x) + self.reg / x.shape[0] * torch.sum(torch.pdist(x.view((x.shape[0], 1)), p=1))
+        is_verified = torch.prod(heaviside(x, zero_pos=True)).bool()
+
         return loss, is_verified
