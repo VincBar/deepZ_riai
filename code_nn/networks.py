@@ -182,15 +182,15 @@ class ZModule(nn.Module):
     def initialize(self, inputs, eps):
         out = inputs
 
-        for i, layer in enumerate(self.layers):
-            if isinstance(layer, ToZLinear):
-                inp = inputs.flatten(start_dim=1)
-                layer.eps[inp < eps] = (inp[inp < eps] + eps) / 2
-                layer.eps[inp > (1 - eps)] = (1 - inp[inp > (1 - eps)] + eps) / 2
-            if isinstance(layer, ToZConv):
-                inp = inputs.flatten(start_dim=1)
-                layer.eps[inp < eps] = (inp[inp < eps] + eps) / 2
-                layer.eps[inp > (1 - eps)] = (1 - inp[inp > (1 - eps)] + eps) / 2
+        for i,layer in enumerate(self.layers):
+            if isinstance(layer,ToZLinear):
+                inp=inputs.flatten(start_dim=1)
+                layer.eps[inp < eps]= (inp[inp < eps]+eps)/2
+                layer.eps[inp > (1-eps)]=(1-inp[inp > (1-eps)]+eps)/2
+            if isinstance(layer,ToZConv):
+                inp=inputs
+                layer.eps[inp < eps] = (inp[inp < eps]+eps)/2
+                layer.eps[inp > (1-eps)] = (1-inp[inp > (1-eps)]+eps)/2
 
             if isinstance(layer, ReLUZ):
                 with torch.no_grad():
@@ -226,8 +226,6 @@ class NNFullyConnectedZ(ZModule):
             prev_fc_size = fc_size
         layers += [EndLayerZ(target, prev_fc_size)]
         self.layers = nn.Sequential(*layers)
-        self.filter_low = torch.zeros(input_size * input_size)
-        self.filter_up = torch.zeros(input_size * input_size)
 
     def forward(self, x):
         return self.layers(x)
@@ -295,7 +293,7 @@ class ToZ(nn.Module):
 class ToZConv(ToZ):
     def __init__(self, eps, c, h, w):
         super(ToZConv, self).__init__()
-        self.eps = eps * torch.ones([1, c, h, w]) * eps
+        self.eps=eps*torch.ones([1,c,h,w])
 
 
 class ToZLinear(ToZ):
