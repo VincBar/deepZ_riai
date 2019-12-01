@@ -4,17 +4,6 @@ from torch.nn.modules.flatten import Flatten
 import numpy as np
 
 
-#
-# def lower_bound(x,filter_low,filter_up):
-#     filt=(heaviside(-x[1:785, ...])*filter_low+filter_up*heaviside(x[1:785])+((filter_low+filter_up)-1)*torch.ones(x[1:785,...].shape))
-#     return x[0, ...] - torch.sum(torch.abs(x[1:785,...]*filt),dim=0)-torch.sum(torch.abs(x[785:,...]), dim=0)
-#
-#
-# def upper_bound(x,filter_low,filter_up):
-#     filt=(filter_low*heaviside(x[1:785, ...])+(filter_up*heaviside(-x[1:785]))-((filter_low+filter_up)-1)*torch.ones(x[1:785,...].shape))
-#     return  x[0, ...] - torch.sum(torch.abs(x[1:785,...]*filt),dim=0)-torch.sum(torch.abs(x[785:,...]), dim=0)
-#
-
 def lower_bound(x):
     return x[0, ...] - torch.sum(torch.abs(x[1:, ...]), dim=0)
 
@@ -101,7 +90,6 @@ def check_lambdas(net):
             up = torch.all(val <= 1)
             lo = torch.all(val >= 0)
             ret = ret & lo & up
-            # print('.'.join([pre, nr, param]), lo, up)
             if not lo:
                 print('lo', val[val < 0])
             if not up:
@@ -436,7 +424,5 @@ class GlobalLoss(nn.Module):
     def forward(self, x):
         loss = - torch.sum(x) + self.reg / x.shape[0] * torch.sum(torch.pdist(x.view((x.shape[0], 1)), p=1))
         is_verified = torch.prod(heaviside(x, zero_pos=True)).bool()
-        # print(is_verified)
-        # if is_verified:
-        #     print("stooop")
+
         return loss, is_verified
