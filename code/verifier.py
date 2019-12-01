@@ -216,7 +216,7 @@ def main():
     start_time = time.time()
     if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=120, tensorboard=False):
         print('verified')
-        print(time.time()-start_time)
+        # print(time.time()-start_time)
     else:
         print('not verified')
 
