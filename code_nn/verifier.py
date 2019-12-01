@@ -3,6 +3,8 @@ import torch
 import time
 
 #sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
+import sys
+sys.path.append('..')
 
 from code_nn.networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, \
     check_lambdas, ClipLambdas

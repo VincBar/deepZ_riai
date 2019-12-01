@@ -8,6 +8,8 @@ from advertorch.utils import predict_from_logits
 from advertorch_examples.utils import get_mnist_test_loader
 from advertorch.attacks import LinfPGDAttack
 
+import sys
+sys.path.append('..')
 import code_nn
 import code_nn.verifier
 import code_nn.networks
