@@ -214,7 +214,7 @@ def main():
     start_time = time.time()
 
 
-    if analyze(netZ, inputs, true_label,eps, pairwise=True, maxsec=100000):
+    if analyze(netZ, inputs, true_label,eps, pairwise=True, maxsec=120):
         print('verified')
         print(time.time()-start_time)
     else:
