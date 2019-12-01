@@ -27,7 +27,7 @@ def check_weights(net_name, netZ):
             print(param,": Net parameter requires gradient ?", val.requires_grad)
 
 
-def analyze(net, inputs, true_label, eps,pairwise=True, tensorboard=True, maxsec=None, time_info=False):
+def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxsec=None, time_info=False):
     # TODO: think hard about this one, we want to avoid local minima
     optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
 
@@ -212,8 +212,8 @@ def main():
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
     start_time = time.time()
-    #clamp_ind=((inputs-eps)==0)
-    #inputs[clamp_ind]=eps/2
+
+
     if analyze(netZ, inputs, true_label,eps, pairwise=True, maxsec=100000):
         print('verified')
         print(time.time()-start_time)

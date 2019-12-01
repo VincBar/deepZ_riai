@@ -3,16 +3,7 @@ import torch.nn as nn
 from torch.nn.modules.flatten import Flatten
 import numpy as np
 
-#
-# def lower_bound(x,filter_low,filter_up):
-#     filt=(heaviside(-x[1:785, ...])*filter_low+filter_up*heaviside(x[1:785])+((filter_low+filter_up)-1)*torch.ones(x[1:785,...].shape))
-#     return x[0, ...] - torch.sum(torch.abs(x[1:785,...]*filt),dim=0)-torch.sum(torch.abs(x[785:,...]), dim=0)
-#
-#
-# def upper_bound(x,filter_low,filter_up):
-#     filt=(filter_low*heaviside(x[1:785, ...])+(filter_up*heaviside(-x[1:785]))-((filter_low+filter_up)-1)*torch.ones(x[1:785,...].shape))
-#     return  x[0, ...] - torch.sum(torch.abs(x[1:785,...]*filt),dim=0)-torch.sum(torch.abs(x[785:,...]), dim=0)
-#
+
 
 def lower_bound(x):
     return x[0,...]-torch.sum(torch.abs(x[1:,...]), dim=0)
@@ -303,6 +294,7 @@ class LinearZ(nn.Linear):
     entry in the K dim. This is achieved by treating each entry in the K dim as a seperate member of a batch by folding
     the K dim into the batch dim. This should leverage PyTorch's parallel computation.
     """
+
     def __init__(self, *args, **kwargs):
         super(LinearZ, self).__init__(*args, **kwargs)
         self.weight.requires_grad = False
@@ -320,6 +312,7 @@ class ConvZ(nn.Conv2d):
     entry in the K dim. This is achieved by treating each entry in the K dim as a seperate member of a batch by folding
     the K dim into the batch dim. This should leverage PyTorch's parallel computation.
     """
+
     def __init__(self, *args, **kwargs):
         super(ConvZ, self).__init__(*args, **kwargs)
         self.weight.requires_grad = False
@@ -389,36 +382,12 @@ class ReLUZ(nn.Module):
         out[0, ...] += l_0_u[0, ...] * (d / 2)[0, ...]
         return extend_Z(out, d / 2 * l_0_u, l_0_u)
 
-        # # TODO: I don't know if the following is computed in parallel, if written like this
-        # # input is (K, c_in, H, W) or (K, fc_size)
-        #
-        # l_t, u_t = lower_bound(x)[None, :], upper_bound(x)[None, :]
-        # _l_t = heaviside(l_t)
-        # l_0_u_t = (heaviside(u_t) * heaviside(-l_t))
-        #
-        # lambda_crit_t = u_t / (u_t - l_t)
-        # is_lower = self.lambdas < lambda_crit_t
-        # is_larger = torch.logical_not(is_lower)
-        #
-        # # TODO: check if lambdas are bounded between [0,1]
-        # # TODO: check if broadcasting of lambdas works as expected
-        # # check completed see test_conv_pad
-        #
-        # # compute shift
-        # d_t = torch.zeros(self.lambdas.shape)
-        # d_t[is_larger] = - l_t[is_larger]
-        # d_t[is_lower] = (1 - self.lambdas[is_lower])/self.lambdas[is_lower] * u_t[is_lower]
-        #
-        # out_t = _l_t * x + l_0_u_t * self.lambdas * x
-        # out_t[0, ...] += l_0_u_t[0, ...] * (self.lambdas * d_t / 2)[0, ...]
-        # torch.all(out_t==out)
-        #
-        # return extend_Z(out_t, self.lambdas * d_t/2 * l_0_u_t, l_0_u_t)
+        # # TODO: I don't know if the following is computed in parallel, if written like this  # # input is (K, c_in, H, W) or (K, fc_size)  #  # l_t, u_t = lower_bound(x)[None, :], upper_bound(x)[None, :]  # _l_t = heaviside(l_t)  # l_0_u_t = (heaviside(u_t) * heaviside(-l_t))  #  # lambda_crit_t = u_t / (u_t - l_t)  # is_lower = self.lambdas < lambda_crit_t  # is_larger = torch.logical_not(is_lower)  #  # # TODO: check if lambdas are bounded between [0,1]  # # TODO: check if broadcasting of lambdas works as expected  # # check completed see test_conv_pad  #  # # compute shift  # d_t = torch.zeros(self.lambdas.shape)  # d_t[is_larger] = - l_t[is_larger]  # d_t[is_lower] = (1 - self.lambdas[is_lower])/self.lambdas[is_lower] * u_t[is_lower]  #  # out_t = _l_t * x + l_0_u_t * self.lambdas * x  # out_t[0, ...] += l_0_u_t[0, ...] * (self.lambdas * d_t / 2)[0, ...]  # torch.all(out_t==out)  #  # return extend_Z(out_t, self.lambdas * d_t/2 * l_0_u_t, l_0_u_t)
 
 
 class ReLUZConv(ReLUZ):
-    def __init__(self, n_channels, height, width):
-        super(ReLUZConv, self).__init__()
+    def __init__(self, n_channels, height, width, *args, **kwargs):
+        super(ReLUZConv, self).__init__(*args, **kwargs)
         # TODO: Currently all lambdas are initialized as one.
         # Maybe the initalization can be learned number specific, smallest area
         # TODO: Only add rows that are actually relevant
@@ -427,8 +396,8 @@ class ReLUZConv(ReLUZ):
 
 
 class ReLUZLinear(ReLUZ):
-    def __init__(self, fc_size):
-        super(ReLUZLinear, self).__init__()
+    def __init__(self, fc_size, *args, **kwargs):
+        super(ReLUZLinear, self).__init__(*args, **kwargs)
 
         self.lambdas = nn.Parameter(torch.ones([1, fc_size]))
         self.lambdas.requires_grad_()
@@ -458,4 +427,3 @@ class GlobalLoss(nn.Module):
         # if is_verified:
         #     print("stooop")
         return loss, is_verified
-
