@@ -89,7 +89,6 @@ def check_lambdas(net):
             up = torch.all(val <= 1)
             lo = torch.all(val >= 0)
             ret = ret & lo & up
-            # print('.'.join([pre, nr, param]), lo, up)
             if not lo:
                 print('lo', val[val < 0])
             if not up:
@@ -340,7 +339,6 @@ class EndLayerZ(nn.Module):
     def forward(self, x):
         x = nn.functional.linear(x, self.weight, bias=None)
         out = lower_bound(x)
-        print(out)
         return out
 
 
@@ -423,7 +421,5 @@ class GlobalLoss(nn.Module):
     def forward(self, x):
         loss = - torch.sum(x) + self.reg / x.shape[0] * torch.sum(torch.pdist(x.view((x.shape[0], 1)), p=1))
         is_verified = torch.prod(heaviside(x, zero_pos=True)).bool()
-        # print(is_verified)
-        # if is_verified:
-        #     print("stooop")
+
         return loss, is_verified
