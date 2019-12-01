@@ -9,11 +9,9 @@ from advertorch_examples.utils import get_mnist_test_loader
 from advertorch.attacks import LinfPGDAttack
 
 import sys
-sys.path.insert(0, '..')
+sys.path.insert(0, '../code')
 
 import code
-import code.verifier
-import code.networks
 
 from collections import OrderedDict
 
