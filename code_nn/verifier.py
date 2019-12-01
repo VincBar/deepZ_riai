@@ -41,13 +41,19 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
 
         start_time = time.time()
         in_time = True
+
+        net.initialize(inputs, eps)
+
+        inputs[inputs < eps] = (inputs[inputs < eps] + eps) / 2
+        inputs[inputs > (1 - eps)] = (1 + inputs[inputs > (1 - eps)] - eps) / 2
+
         while not not non_verified_digits and in_time:
             i = list(non_verified_digits)[0]
 
             # initialize lambdas,
             # TODO: do we restart from scratch for each digit? we could try warm starting, maybe for 'similar' digits
             # TODO: search good initialization
-            net.initialize(inputs, eps)
+
 
             writer = None
             if tensorboard:
@@ -60,6 +66,7 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
             losses[i].non_verified = list(non_verified_digits)
             res, out = run_optimization(net, inputs, losses[i], optimizer, writer=writer, maxsec=remaining_time)
 
+
             # check which digits can be cancelled
             # print(np.where(out > 0)[0], non_verified_digits)
             non_verified_digits -= set(np.where(out > 0)[0])
@@ -70,6 +77,9 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
     else:
         loss = GlobalLoss(0.1)
         net.initialize(inputs, eps)
+
+        inputs[inputs < eps] = (inputs[inputs < eps] + eps) / 2
+        inputs[inputs > (1 - eps)] = (1 + inputs[inputs > (1 - eps)] - eps) / 2
 
         writer = None
         if tensorboard:

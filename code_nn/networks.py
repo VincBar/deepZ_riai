@@ -3,23 +3,21 @@ import torch.nn as nn
 from torch.nn.modules.flatten import Flatten
 import numpy as np
 
-
-# def lower_bound(x, dim=785):
-#     return x[0, ...] - torch.sum(torch.abs(x[dim:, ...]), dim=0) \
-#            + torch.sum(x[1:dim, ...].clamp(max=0))
+#
+# def lower_bound(x,filter_low,filter_up):
+#     filt=(heaviside(-x[1:785, ...])*filter_low+filter_up*heaviside(x[1:785])+((filter_low+filter_up)-1)*torch.ones(x[1:785,...].shape))
+#     return x[0, ...] - torch.sum(torch.abs(x[1:785,...]*filt),dim=0)-torch.sum(torch.abs(x[785:,...]), dim=0)
 #
 #
-# def upper_bound(x, dim=785):
-#     return x[0, ...] + torch.sum(torch.abs(x[dim:, ...]), dim=0) \
-#            + torch.sum(x[1:dim, ...].clamp(min=0))
+# def upper_bound(x,filter_low,filter_up):
+#     filt=(filter_low*heaviside(x[1:785, ...])+(filter_up*heaviside(-x[1:785]))-((filter_low+filter_up)-1)*torch.ones(x[1:785,...].shape))
+#     return  x[0, ...] - torch.sum(torch.abs(x[1:785,...]*filt),dim=0)-torch.sum(torch.abs(x[785:,...]), dim=0)
 #
 
-class Bound(nn.Module):
-    def __init__(self, orig_image, eps):
-        super(Bound, self).__init__()
-
-        # max(-1, - orig_image / eps)
-        self.input_eps_lo = (- orig_image / eps).clamp(min=-1).flatten()
+def lower_bound(x):
+    return x[0,...]-torch.sum(torch.abs(x[1:,...]), dim=0)
+def upper_bound(x):
+    return x[0,...]+torch.sum(torch.abs(x[1:,...]), dim=0)
 
         # min(1, (1 - orig_image) / eps)
         self.input_eps_hi = ((1 - orig_image) / eps).clamp(max=1).flatten()
@@ -197,24 +195,32 @@ class Conv(nn.Module):
 
 
 class ZModule(nn.Module):
-    def initialize(self, inputs, eps):
-        out = inputs
-        bound = Bound(inputs, eps)
+    def initialize(self,inputs,eps):
+        out=inputs
 
-        for i, layer in enumerate(self.layers):
+        for i,layer in enumerate(self.layers):
+            if isinstance(layer,ToZLinear):
+                inp=inputs.flatten(start_dim=1)
+                layer.eps[inp < eps]= (inp[inp < eps]+eps)/2
+                layer.eps[inp > (1-eps)]=(1-inp[inp > (1-eps)]+eps)/2
+            if isinstance(layer,ToZConv):
+                layer.eps[inp < eps] = (inp[inp < eps]+eps)/2
+                layer.eps[inp > (1-eps)] = (1-inp[inp > (1-eps)]+eps)/2
+
             if isinstance(layer, ReLUZ):
                 with torch.no_grad():
-                    layer.bound = bound
 
-                    l = layer.bound.lower_bound(out)
-                    u = layer.bound.upper_bound(out)
+                    l = lower_bound(out)
+                    u = upper_bound(out)
 
-                    layer.lambdas.copy_(u / (u - l))
+                    layer.lambdas.copy_(u/(u-l))
                     layer.lambdas.requires_grad = True
 
             if isinstance(layer, LinearZ) or isinstance(layer, ConvZ):
                 layer.weight.requires_grad = False
                 layer.bias.requires_grad = False
+
+            out = self.layers[i](out)
 
             if isinstance(layer, EndLayerZ):
                 layer.bound = bound
@@ -231,9 +237,9 @@ class NNFullyConnectedZ(ZModule):
 
     def __init__(self, device, input_size, fc_layers, eps, target):
         super(NNFullyConnectedZ, self).__init__()
-
-        layers = [Normalization(device), ToZ(eps), Flatten(start_dim=1), EpsNorm()]
         prev_fc_size = input_size * input_size
+
+        layers = [Normalization(device), ToZLinear(eps,prev_fc_size), Flatten(start_dim=1), EpsNorm()]
         for i, fc_size in enumerate(fc_layers):
             layers += [LinearZ(prev_fc_size, fc_size)]
             if i + 1 < len(fc_layers):
@@ -241,6 +247,8 @@ class NNFullyConnectedZ(ZModule):
             prev_fc_size = fc_size
         layers += [EndLayerZ(target, prev_fc_size)]
         self.layers = nn.Sequential(*layers)
+        self.filter_low = torch.zeros(input_size*input_size)
+        self.filter_up = torch.zeros(input_size*input_size)
 
     def forward(self, x):
         return self.layers(x)
@@ -259,9 +267,10 @@ class NNConvZ(ZModule):
         self.input_size = input_size
         self.n_class = n_class
 
-        layers = [Normalization(device), ToZ(eps), EpsNorm()]
         prev_channels = 1
         height = width = input_size
+
+        layers = [Normalization(device), ToZConv(eps,prev_channels,height,width), EpsNorm()]
 
         for n_channels, kernel_size, stride, padding in conv_layers:
             height, width = self._compute_resulting_height_width(height, width, kernel_size, stride, 2 * padding)
@@ -296,14 +305,23 @@ class ToZ(nn.Module):
     with perturbation eps. The output will be (K, ...) where K = nr of input nodes (fc_size, height * width).
     """
 
-    def __init__(self, eps):
+    def __init__(self):
         super(ToZ, self).__init__()
-        self.eps = eps
+
 
     def forward(self, x):
         pad = np.prod(x.shape[1:])
         return extend_Z(x, self.eps, torch.ones([pad]))
 
+class ToZConv(ToZ):
+    def __init__(self,eps,c,h,w):
+        super(ToZConv, self).__init__()
+        self.eps=eps*torch.ones([1,c,h,w])*eps
+
+class ToZLinear(ToZ):
+    def __init__(self,eps,fc_size):
+        super(ToZLinear, self).__init__()
+        self.eps=torch.ones([1, fc_size])*eps
 
 class LinearZ(nn.Linear):
     """
