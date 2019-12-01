@@ -290,7 +290,7 @@ class ToZ(nn.Module):
 class ToZConv(ToZ):
     def __init__(self,eps,c,h,w):
         super(ToZConv, self).__init__()
-        self.eps=eps*torch.ones([1,c,h,w])*eps
+        self.eps=eps*torch.ones([1,c,h,w])
 
 class ToZLinear(ToZ):
     def __init__(self,eps,fc_size):
