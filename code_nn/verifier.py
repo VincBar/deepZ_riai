@@ -6,7 +6,7 @@ import time
 import sys
 sys.path.insert(0, '..')
 
-from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, \
+from code_nn.networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, \
     check_lambdas, ClipLambdas
 from time import strftime, gmtime
 from collections import OrderedDict
