@@ -3,6 +3,8 @@ import torch
 import time
 
 #sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
+import sys
+sys.path.insert(0, '..')
 
 from code_nn.networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, \
     check_lambdas, ClipLambdas
@@ -212,16 +214,14 @@ def main():
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
     start_time = time.time()
-
-
-    if analyze(netZ, inputs, true_label,eps, pairwise=True, maxsec=120):
+    if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=120, tensorboard=False):
         print('verified')
         print(time.time()-start_time)
     else:
         print('not verified')
 
-    check_weights(args.net, netZ)
-    check_lambdas(net)
+    # check_weights(args.net, netZ)
+    # check_lambdas(net)
 
 
 if __name__ == '__main__':

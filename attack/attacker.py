@@ -2,14 +2,17 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
+import argparse
 
 from advertorch.utils import predict_from_logits
 from advertorch_examples.utils import get_mnist_test_loader
 from advertorch.attacks import LinfPGDAttack
 
+import sys
+sys.path.insert(0, '..')
+
 import code_nn
-import code_nn.verifier
-import code_nn.networks
+from code_nn import verifier
 
 from collections import OrderedDict
 
@@ -17,6 +20,7 @@ from functools import partial
 from joblib import Parallel, delayed
 
 import logging
+from time import strftime, gmtime
 
 torch.manual_seed(0)
 use_cuda = torch.cuda.is_available()
@@ -46,18 +50,18 @@ def load_nets(eps=0, target=0, zonotope=False):
     """
     Load nets
 
-    :param eps: can be number or iterable of size code_nn.verifier.NET_CHOICES
+    :param eps: can be number or iterable of size verifier.NET_CHOICES
     :param target: int
     :param zonotope: if True return the zonotope nets.
     :return:
     """
     nets = OrderedDict([])
     if type(eps) is int:
-        eps = [float(eps)] * len(code_nn.verifier.NET_CHOICES)
+        eps = [float(eps)] * len(verifier.NET_CHOICES)
 
-    neteps = zip(code_nn.verifier.NET_CHOICES, eps)
+    neteps = zip(verifier.NET_CHOICES, eps)
     for net_name, eps in neteps:
-        net, netZ = code_nn.verifier.load_net(net_name, eps=eps, target=target)
+        net, netZ = verifier.load_net(net_name, eps=eps, target=target)
         if zonotope:
             net = netZ
         nets[net_name] = net
@@ -160,7 +164,7 @@ def verify(data, labels, eps, n_jobs=4, maxsec=120, tensorboard=False, pairwise=
         non_robust_net = np.where(eps[:, i] < np.inf)[0]
         netZs_epss = [(netZ, eps[j, i]) for j, netZ in enumerate(netZs.values()) if j in non_robust_net]
 
-        jobs = [partial(code_nn.verifier.analyze, net=netZ, inputs=digit[None, :], true_label=label, eps=eps,
+        jobs = [partial(verifier.analyze, net=netZ, inputs=digit[None, :], true_label=label, eps=eps,
                         pairwise=pairwise, tensorboard=tensorboard, maxsec=maxsec, time_info=True)
                 for netZ, eps in netZs_epss]
 
@@ -251,7 +255,7 @@ def check_verify_first(data, labels, eps, n_jobs=4, pairwise=True, maxsec=120, *
     :param kwargs:
     :return:
     """
-    eps_verif = np.ones((len(code_nn.verifier.NET_CHOICES), data.shape[0])) * eps
+    eps_verif = np.ones((len(verifier.NET_CHOICES), data.shape[0])) * eps
     is_verified, run_times = verify(data, labels, eps_verif, n_jobs=n_jobs, pairwise=pairwise, maxsec=maxsec,
                                     *args, **kwargs)
 
@@ -273,16 +277,53 @@ def check_verify_first(data, labels, eps, n_jobs=4, pairwise=True, maxsec=120, *
     return ret
 
 
-if __name__ == '__main__':
-    #for i in range(2,15):
+def attack():
     cln_data, true_labels = load_data(1)
     pd.options.display.max_columns = 12
 
     # don't use joblib with tensorboard !! set n_jobs=1 to deactivate joblib
-    print(check_adv_first(cln_data, true_labels, pairwise=False, nr_eps=5, n_jobs=5, maxsec=60, tensorboard=False,
+    print(check_adv_first(cln_data, true_labels, pairwise=True, nr_eps=5, n_jobs=5, maxsec=120, tensorboard=False,
                           check_smaller=True))
 
-    #check_verify_first(cln_data, true_labels, 0.15, 10, n_jobs=1)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Attacking neural network verification using DeepZ relaxation')
+    parser.add_argument('--pairwise', type=int, choices=[0, 1], required=True, help='which loss')
+    parser.add_argument('--nr_eps', type=int, required=True)
+    parser.add_argument('--n_jobs_per_digit', type=int, required=True)
+    parser.add_argument('--maxsec', type=int, required=True)
+    parser.add_argument('--check_smaller', choices=[0, 1], type=int, required=True)
+    parser.add_argument('--n_digits', type=int, required=True)
+    parser.add_argument('--n_jobs', type=int, required=True)
+
+    args = parser.parse_args()
+
+    # print('Spawning task to ' + str(args.n_jobs * args.n_jobs_per_digit) + 'jobs.')
+
+    cln_data, true_labels = load_data(args.n_digits)
+    pd.options.display.max_columns = 12
+
+    # don't use joblib with tensorboard !! set n_jobs=1 to deactivate joblib
+    jobs = [partial(check_adv_first, data=cln_data[i][None, ...], labels=true_labels[i][None, ...],
+                    pairwise=args.pairwise, nr_eps=args.nr_eps,
+                    n_jobs=args.n_jobs_per_digit, maxsec=args.maxsec,
+                    tensorboard=False, check_smaller=args.check_smaller)
+            for i in range(args.n_digits)]
+
+    out = run_jobs(jobs, n_jobs=args.n_jobs)
+
+    # put correct digit identifiers
+    for i, df in enumerate(out):
+        df['digit_id'] = i
+
+    dfs = pd.concat(out, axis=0)
+    print(dfs)
+
+    tim = strftime("%Y-%m-%d-%H_%M_%S", gmtime())
+    dfs.to_pickle('pd_attack_dfs' + '_' + 'pairwise' + str(args.pairwise) + '_' + tim + '.pkl')
+
+    # attack()
+
 
 
 

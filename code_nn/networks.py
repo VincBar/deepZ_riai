@@ -4,11 +4,12 @@ from torch.nn.modules.flatten import Flatten
 import numpy as np
 
 
-
 def lower_bound(x):
-    return x[0,...]-torch.sum(torch.abs(x[1:,...]), dim=0)
+    return x[0, ...] - torch.sum(torch.abs(x[1:, ...]), dim=0)
+
+
 def upper_bound(x):
-    return x[0,...]+torch.sum(torch.abs(x[1:,...]), dim=0)
+    return x[0, ...] + torch.sum(torch.abs(x[1:, ...]), dim=0)
 
 
 def is_scalar(x):
@@ -54,12 +55,7 @@ def extend_Z(x, vals, l_0_u):
     pad = l_0_u.flatten().sum().int()
     pad2 = np.prod(x.shape[1:])
     x = pad_K_dim(x, pad.numpy())
-    if is_scalar(vals):
-        vals = vals * torch.ones(pad2)
-
-    # TODO: check this!!
-
-    x[K:, ...] = torch.diagflat(vals).view([pad2] + list(x.shape[1:]))[l_0_u.bool().flatten(), ...]
+    x[K:, ...] = vals[l_0_u.bool().flatten(start_dim=0), ...]
     return x
 
 
@@ -166,33 +162,33 @@ class Conv(nn.Module):
 
 
 class ZModule(nn.Module):
-    def initialize(self,inputs,eps):
-        out=inputs
+    def initialize(self, inputs, eps):
+        out = inputs
 
-        for i,layer in enumerate(self.layers):
-            if isinstance(layer,ToZLinear):
-                inp=inputs.flatten(start_dim=1)
-                layer.eps[inp < eps]= (inp[inp < eps]+eps)/2
-                layer.eps[inp > (1-eps)]=(1-inp[inp > (1-eps)]+eps)/2
-            if isinstance(layer,ToZConv):
-                inp=inputs
-                layer.eps[inp < eps] = (inp[inp < eps]+eps)/2
-                layer.eps[inp > (1-eps)] = (1-inp[inp > (1-eps)]+eps)/2
+        for i, layer in enumerate(self.layers):
+            if isinstance(layer, ToZLinear):
+                inp = inputs.flatten(start_dim=1)
+                layer.eps[inp < eps] = (inp[inp < eps] + eps) / 2
+                layer.eps[inp > (1 - eps)] = (1 - inp[inp > (1 - eps)] + eps) / 2
+            if isinstance(layer, ToZConv):
+                inp = inputs
+                layer.eps[inp < eps] = (inp[inp < eps] + eps) / 2
+                layer.eps[inp > (1 - eps)] = (1 - inp[inp > (1 - eps)] + eps) / 2
 
             if isinstance(layer, ReLUZ):
                 with torch.no_grad():
-
                     l = lower_bound(out)
                     u = upper_bound(out)
 
-                    layer.lambdas.copy_(u/(u-l))
-                    layer.lambdas.requires_grad = True
+                    layer.Lambdas= torch.einsum('..., i... -> i...', [u/(u-l), layer.Lambdas])
+                    #print(layer.Lambdas)
 
             if isinstance(layer, LinearZ) or isinstance(layer, ConvZ):
                 layer.weight.requires_grad = False
                 layer.bias.requires_grad = False
 
             out = self.layers[i](out)
+
 
 class NNFullyConnectedZ(ZModule):
     """
@@ -205,7 +201,7 @@ class NNFullyConnectedZ(ZModule):
         super(NNFullyConnectedZ, self).__init__()
         prev_fc_size = input_size * input_size
 
-        layers = [Normalization(device), ToZLinear(eps,prev_fc_size), Flatten(start_dim=1), EpsNorm()]
+        layers = [Normalization(device), ToZLinear(eps, prev_fc_size), Flatten(start_dim=1), EpsNorm()]
         for i, fc_size in enumerate(fc_layers):
             layers += [LinearZ(prev_fc_size, fc_size)]
             if i + 1 < len(fc_layers):
@@ -234,7 +230,7 @@ class NNConvZ(ZModule):
         prev_channels = 1
         height = width = input_size
 
-        layers = [Normalization(device), ToZConv(eps,prev_channels,height,width), EpsNorm()]
+        layers = [Normalization(device), ToZConv(eps, prev_channels, height, width), EpsNorm()]
 
         for n_channels, kernel_size, stride, padding in conv_layers:
             height, width = self._compute_resulting_height_width(height, width, kernel_size, stride, 2 * padding)
@@ -272,20 +268,22 @@ class ToZ(nn.Module):
     def __init__(self):
         super(ToZ, self).__init__()
 
-
     def forward(self, x):
         pad = np.prod(x.shape[1:])
-        return extend_Z(x, self.eps, torch.ones([pad]))
+        return extend_Z(x, torch.diagflat(self.eps).view([pad] + list(x.shape)[1:]), torch.ones(x.shape[1:]))
+
 
 class ToZConv(ToZ):
-    def __init__(self,eps,c,h,w):
+    def __init__(self, eps, c, h, w):
         super(ToZConv, self).__init__()
-        self.eps=eps*torch.ones([1,c,h,w])
+        self.eps = eps * torch.ones([1, c, h, w])
+
 
 class ToZLinear(ToZ):
-    def __init__(self,eps,fc_size):
+    def __init__(self, eps, fc_size):
         super(ToZLinear, self).__init__()
-        self.eps=torch.ones([1, fc_size])*eps
+        self.eps = torch.ones([1, fc_size]) * eps
+
 
 class LinearZ(nn.Linear):
     """
@@ -361,12 +359,12 @@ class ReLUZ(nn.Module):
         # TODO: I don't know if the following is computed in parallel, if written like this
         # input is (K, c_in, H, W) or (K, fc_size)
 
-        l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
+        l, u = lower_bound(x), upper_bound(x)
         _l = heaviside(l)
         l_0_u = (heaviside(u) * heaviside(-l))
 
-        d_1 = -l * self.lambdas
-        d_2 = u * (1 - self.lambdas)
+        d_1 = torch.einsum('..., i... -> i...', [-l, self.Lambdas])  # -l * self.lambdas
+        d_2 = torch.einsum('..., i... -> i...', [u, self.Ones - self.Lambdas])  # u * (1 - self.lambdas)
 
         # TODO: check if lambdas are bounded between [0,1]
         # check completed
@@ -376,29 +374,39 @@ class ReLUZ(nn.Module):
         # compute shift
         d = torch.max(d_1, d_2)
 
-        out = _l * x + l_0_u * self.lambdas * x
-        out[0, ...] += l_0_u[0, ...] * (d / 2)[0, ...]
-        return extend_Z(out, d / 2 * l_0_u, l_0_u)
+        out = torch.einsum('..., k... -> k...', [_l, x]) + torch.einsum('..., ..., k... -> k...',
+                                                                        [l_0_u, self.lambdas, x])
+        out[0, ...] += l_0_u * (d / 2)[0, ...]
 
-        # # TODO: I don't know if the following is computed in parallel, if written like this  # # input is (K, c_in, H, W) or (K, fc_size)  #  # l_t, u_t = lower_bound(x)[None, :], upper_bound(x)[None, :]  # _l_t = heaviside(l_t)  # l_0_u_t = (heaviside(u_t) * heaviside(-l_t))  #  # lambda_crit_t = u_t / (u_t - l_t)  # is_lower = self.lambdas < lambda_crit_t  # is_larger = torch.logical_not(is_lower)  #  # # TODO: check if lambdas are bounded between [0,1]  # # TODO: check if broadcasting of lambdas works as expected  # # check completed see test_conv_pad  #  # # compute shift  # d_t = torch.zeros(self.lambdas.shape)  # d_t[is_larger] = - l_t[is_larger]  # d_t[is_lower] = (1 - self.lambdas[is_lower])/self.lambdas[is_lower] * u_t[is_lower]  #  # out_t = _l_t * x + l_0_u_t * self.lambdas * x  # out_t[0, ...] += l_0_u_t[0, ...] * (self.lambdas * d_t / 2)[0, ...]  # torch.all(out_t==out)  #  # return extend_Z(out_t, self.lambdas * d_t/2 * l_0_u_t, l_0_u_t)
+        # print((d / 2 * l_0_u).shape, l_0_u.shape)
+        appendix = torch.einsum('i..., ... -> i...', [d / 2, l_0_u])
+
+        return extend_Z(out, appendix, l_0_u)
 
 
 class ReLUZConv(ReLUZ):
     def __init__(self, n_channels, height, width, *args, **kwargs):
         super(ReLUZConv, self).__init__(*args, **kwargs)
         # TODO: Currently all lambdas are initialized as one.
-        # Maybe the initalization can be learned number specific, smallest area
+        # Maybe the initialization can be learned number specific, smallest area
         # TODO: Only add rows that are actually relevant
-        self.lambdas = nn.Parameter(torch.ones([1, n_channels, height, width]))
+        prod = n_channels * height * width
+        self.lambdas = nn.Parameter(torch.ones([prod]))
         self.lambdas.requires_grad_()
+        self.ones = torch.ones([prod])
+        self.Ones = torch.diagflat(self.ones).view([prod, n_channels, height, width])
+        self.Lambdas = torch.diagflat(self.lambdas).view([prod, n_channels, height, width])
 
 
 class ReLUZLinear(ReLUZ):
     def __init__(self, fc_size, *args, **kwargs):
         super(ReLUZLinear, self).__init__(*args, **kwargs)
 
-        self.lambdas = nn.Parameter(torch.ones([1, fc_size]))
+        self.lambdas = nn.Parameter(torch.ones([fc_size]))
         self.lambdas.requires_grad_()
+        self.Ones = torch.diagflat(torch.ones([fc_size]))
+
+        self.Lambdas = torch.diagflat(self.lambdas)
 
 
 class PairwiseLoss(nn.Module):

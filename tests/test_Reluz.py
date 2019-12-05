@@ -1,7 +1,7 @@
 import torch
 import sys
 sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
-from code_nn.networks import ReLUZLinear, extend_Z
+from code.networks import ReLUZLinear, extend_Z
 
 # Let x be the current zonotope. In the linear case x.shape = (K, fc_size).
 # Now we want to apply the DeepZ relaxation on a linear Layer. In our current approach it should add fc_size parameters
