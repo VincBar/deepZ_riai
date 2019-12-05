@@ -374,10 +374,12 @@ class ReLUZ(nn.Module):
         # compute shift
         d = torch.max(d_1, d_2)
 
-        out = torch.einsum('..., k... -> k...', [_l, x]) + torch.einsum('..., ..., k... -> k...',
-                                                                        [l_0_u, self.lambdas, x])
+        # out = torch.einsum('..., k... -> k...', [_l, x]) + torch.einsum('..., ..., k... -> k...',
+        #                                                                 [l_0_u, self.lambdas, x])
+
+        out=_l[None,:] * x + l_0_u[None,:] * self.lambdas * x
         out[0, ...] += l_0_u * (d / 2)[0, ...]
-        #out=_l * x + l_0_u * self.lambdas * x
+
         # print((d / 2 * l_0_u).shape, l_0_u.shape)
         appendix = torch.einsum('i..., ... -> i...', [d / 2, l_0_u])
 
@@ -390,12 +392,12 @@ class ReLUZConv(ReLUZ):
         # TODO: Currently all lambdas are initialized as one.
         # Maybe the initialization can be learned number specific, smallest area
         # TODO: Only add rows that are actually relevant
-        prod = n_channels * height * width
-        self.lambdas = nn.Parameter(torch.ones([prod]))
+        prod=n_channels*height*width
+        self.lambdas = nn.Parameter(torch.ones([1,n_channels,height,width]))
         self.lambdas.requires_grad_()
-        self.ones = torch.ones([prod])
-        self.Ones = torch.diagflat(self.ones).view([prod, n_channels, height, width])
-        self.Lambdas = torch.diagflat(self.lambdas).view([prod, n_channels, height, width])
+        self.ones = torch.ones([1,n_channels,height,width])
+        self.Ones = torch.diagflat(self.ones).view([prod] + [n_channels,height,width])
+        self.Lambdas = torch.diagflat(self.lambdas).view([prod]+[n_channels, height, width])
 
 
 class ReLUZLinear(ReLUZ):
