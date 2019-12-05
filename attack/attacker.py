@@ -9,7 +9,7 @@ from advertorch_examples.utils import get_mnist_test_loader
 from advertorch.attacks import LinfPGDAttack
 
 import sys
-sys.path.insert(0, '../code')
+sys.path.insert(0, '../code_nn')
 
 import code
 
