@@ -180,8 +180,8 @@ class ZModule(nn.Module):
                     l = lower_bound(out)
                     u = upper_bound(out)
 
-                    layer.lambdas.copy_(u / (u - l))
-                    layer.lambdas.requires_grad = True
+                    layer.Lambdas= torch.einsum('..., i... -> i...', [u/(u-l), layer.Lambdas])
+                    #print(layer.Lambdas)
 
             if isinstance(layer, LinearZ) or isinstance(layer, ConvZ):
                 layer.weight.requires_grad = False
