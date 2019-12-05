@@ -42,6 +42,27 @@ def pad_K_dim(x, pad):
     padding[-1] = pad
     return nn.functional.pad(x, padding, mode='constant', value=0)
 
+def extend_ToZ(x, vals, l_0_u):
+    """
+    Extend the K dimension of input x by the number of ReLU's put on an affine layer in the original NN and update the
+    values in the K dim by vals. (see j=K+i and j=else in case distinction in 2.2 in project paper).
+    :param x:
+    :param vals: one-dimensional tensor
+    :return:
+    """
+    K = x.shape[0]
+    pad = l_0_u.flatten().sum().int()
+    pad2 = np.prod(x.shape[1:])
+    x = pad_K_dim(x, pad.numpy())
+    if is_scalar(vals):
+        vals = vals * torch.ones(pad2)
+
+    # TODO: check this!!
+
+    x[K:, ...] = torch.diagflat(vals).view([pad2] + list(x.shape[1:]))[l_0_u.bool().flatten(), ...]
+    return x
+
+
 
 def extend_Z(x, vals, l_0_u):
     """
@@ -182,9 +203,9 @@ class ZModule(nn.Module):
                 with torch.no_grad():
                     l = lower_bound(out)
                     u = upper_bound(out)
+                    print(u.shape)
+                    layer.lambdas=layer.lambdas*(u / (u - l))
 
-                    layer.lambdas.copy_(u / (u - l))
-                    layer.lambdas.requires_grad = True
 
             if isinstance(layer, LinearZ) or isinstance(layer, ConvZ):
                 layer.weight.requires_grad = False
@@ -280,8 +301,6 @@ class ToZConv(ToZ):
     def __init__(self, eps, c, h, w):
         super(ToZConv, self).__init__()
         self.eps = eps * torch.ones([1, c, h, w])
-        pad=c*h*w
-        self.eps = torch.diagflat(self.eps).view([pad] + [c,h,w])
 
 
 class ToZLinear(ToZ):
@@ -368,8 +387,10 @@ class ReLUZ(nn.Module):
         _l = heaviside(l)
         l_0_u = (heaviside(u) * heaviside(-l))
 
-        d_1 = -l * self.lambdas
-        d_2 = u * (1 - self.lambdas)
+        sel_ind=l_0_u.bool().flatten()
+        print(sel_ind)
+        d_1 =  self.lambdas[sel_ind]*-(l.flatten())[sel_ind]
+        d_2 = u[sel_ind] * (1 - self.lambdas[sel_ind])
 
         # TODO: check if lambdas are bounded between [0,1]
         # check completed
