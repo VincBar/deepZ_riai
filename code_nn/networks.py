@@ -394,7 +394,7 @@ class ReLUZConv(ReLUZ):
         self.lambdas = nn.Parameter(torch.ones([prod]))
         self.lambdas.requires_grad_()
 
-        self.Lambdas = torch.diagflat(self.lambdas.view([prod, n_channels, height, width]))
+        self.Lambdas = torch.diagflat(self.lambdas).view([prod, n_channels, height, width])
 
 
 class ReLUZLinear(ReLUZ):
