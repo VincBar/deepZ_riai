@@ -377,7 +377,7 @@ class ReLUZ(nn.Module):
         out = torch.einsum('..., k... -> k...', [_l, x]) + torch.einsum('..., ..., k... -> k...',
                                                                         [l_0_u, self.lambdas, x])
         out[0, ...] += l_0_u * (d / 2)[0, ...]
-
+        #out=_l * x + l_0_u * self.lambdas * x
         # print((d / 2 * l_0_u).shape, l_0_u.shape)
         appendix = torch.einsum('i..., ... -> i...', [d / 2, l_0_u])
 
