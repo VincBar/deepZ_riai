@@ -55,12 +55,7 @@ def extend_Z(x, vals, l_0_u):
     pad = l_0_u.flatten().sum().int()
     pad2 = np.prod(x.shape[1:])
     x = pad_K_dim(x, pad.numpy())
-    if is_scalar(vals):
-        vals = vals * torch.ones(pad2)
-
-    # TODO: check this!!
-
-    x[K:, ...] = torch.diagflat(vals).view([pad2] + list(x.shape[1:]))[l_0_u.bool().flatten(), ...]
+    x[K:, ...] = vals[l_0_u.bool().flatten(start_dim=0), ...]
     return x
 
 
@@ -275,7 +270,7 @@ class ToZ(nn.Module):
 
     def forward(self, x):
         pad = np.prod(x.shape[1:])
-        return extend_Z(x, self.eps, torch.ones([pad]))
+        return extend_Z(x, torch.diagflat(self.eps).view([pad] + list(x.shape)[1:]), torch.ones(x.shape[1:]))
 
 
 class ToZConv(ToZ):
@@ -364,12 +359,12 @@ class ReLUZ(nn.Module):
         # TODO: I don't know if the following is computed in parallel, if written like this
         # input is (K, c_in, H, W) or (K, fc_size)
 
-        l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
+        l, u = lower_bound(x), upper_bound(x)
         _l = heaviside(l)
         l_0_u = (heaviside(u) * heaviside(-l))
 
-        d_1 = -l * self.lambdas
-        d_2 = u * (1 - self.lambdas)
+        d_1 = torch.einsum('..., i... -> i...', [-l, self.Lambdas])  # -l * self.lambdas
+        d_2 = torch.einsum('..., i... -> i...', [u, 1 - self.Lambdas])  # u * (1 - self.lambdas)
 
         # TODO: check if lambdas are bounded between [0,1]
         # check completed
@@ -379,29 +374,36 @@ class ReLUZ(nn.Module):
         # compute shift
         d = torch.max(d_1, d_2)
 
-        out = _l * x + l_0_u * self.lambdas * x
-        out[0, ...] += l_0_u[0, ...] * (d / 2)[0, ...]
-        return extend_Z(out, d / 2 * l_0_u, l_0_u)
+        out = torch.einsum('..., k... -> k...', [_l, x]) + torch.einsum('..., ..., k... -> k...',
+                                                                        [l_0_u, self.lambdas, x])
+        out[0, ...] += l_0_u * (d / 2)[0, ...]
 
-        # # TODO: I don't know if the following is computed in parallel, if written like this  # # input is (K, c_in, H, W) or (K, fc_size)  #  # l_t, u_t = lower_bound(x)[None, :], upper_bound(x)[None, :]  # _l_t = heaviside(l_t)  # l_0_u_t = (heaviside(u_t) * heaviside(-l_t))  #  # lambda_crit_t = u_t / (u_t - l_t)  # is_lower = self.lambdas < lambda_crit_t  # is_larger = torch.logical_not(is_lower)  #  # # TODO: check if lambdas are bounded between [0,1]  # # TODO: check if broadcasting of lambdas works as expected  # # check completed see test_conv_pad  #  # # compute shift  # d_t = torch.zeros(self.lambdas.shape)  # d_t[is_larger] = - l_t[is_larger]  # d_t[is_lower] = (1 - self.lambdas[is_lower])/self.lambdas[is_lower] * u_t[is_lower]  #  # out_t = _l_t * x + l_0_u_t * self.lambdas * x  # out_t[0, ...] += l_0_u_t[0, ...] * (self.lambdas * d_t / 2)[0, ...]  # torch.all(out_t==out)  #  # return extend_Z(out_t, self.lambdas * d_t/2 * l_0_u_t, l_0_u_t)
+        # print((d / 2 * l_0_u).shape, l_0_u.shape)
+
+        return extend_Z(out, d / 2 * l_0_u, l_0_u)
 
 
 class ReLUZConv(ReLUZ):
     def __init__(self, n_channels, height, width, *args, **kwargs):
         super(ReLUZConv, self).__init__(*args, **kwargs)
         # TODO: Currently all lambdas are initialized as one.
-        # Maybe the initalization can be learned number specific, smallest area
+        # Maybe the initialization can be learned number specific, smallest area
         # TODO: Only add rows that are actually relevant
-        self.lambdas = nn.Parameter(torch.ones([1, n_channels, height, width]))
+        prod = n_channels * height * width
+        self.lambdas = nn.Parameter(torch.ones([prod]))
         self.lambdas.requires_grad_()
+
+        self.Lambdas = torch.diagflat(self.lambdas.view([prod, n_channels, height, width]))
 
 
 class ReLUZLinear(ReLUZ):
     def __init__(self, fc_size, *args, **kwargs):
         super(ReLUZLinear, self).__init__(*args, **kwargs)
 
-        self.lambdas = nn.Parameter(torch.ones([1, fc_size]))
+        self.lambdas = nn.Parameter(torch.ones([fc_size]))
         self.lambdas.requires_grad_()
+
+        self.Lambdas = torch.diagflat(self.lambdas)
 
 
 class PairwiseLoss(nn.Module):
