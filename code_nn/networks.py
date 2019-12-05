@@ -364,7 +364,7 @@ class ReLUZ(nn.Module):
         l_0_u = (heaviside(u) * heaviside(-l))
 
         d_1 = torch.einsum('..., i... -> i...', [-l, self.Lambdas])  # -l * self.lambdas
-        d_2 = torch.einsum('..., i... -> i...', [u, 1 - self.Lambdas])  # u * (1 - self.lambdas)
+        d_2 = torch.einsum('..., i... -> i...', [u, self.Ones - self.Lambdas])  # u * (1 - self.lambdas)
 
         # TODO: check if lambdas are bounded between [0,1]
         # check completed
@@ -393,7 +393,8 @@ class ReLUZConv(ReLUZ):
         prod = n_channels * height * width
         self.lambdas = nn.Parameter(torch.ones([prod]))
         self.lambdas.requires_grad_()
-
+        self.ones = torch.ones([prod])
+        self.Ones = torch.diagflat(self.ones).view([prod, n_channels, height, width])
         self.Lambdas = torch.diagflat(self.lambdas).view([prod, n_channels, height, width])
 
 
@@ -403,6 +404,7 @@ class ReLUZLinear(ReLUZ):
 
         self.lambdas = nn.Parameter(torch.ones([fc_size]))
         self.lambdas.requires_grad_()
+        self.Ones = torch.diagflat(torch.ones([fc_size]))
 
         self.Lambdas = torch.diagflat(self.lambdas)
 
