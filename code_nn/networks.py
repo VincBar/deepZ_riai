@@ -43,7 +43,7 @@ def pad_K_dim(x, pad):
     return nn.functional.pad(x, padding, mode='constant', value=0)
 
 
-def extend_Z(x, vals, l_0_u):
+def extend_Z(x, vals):
     """
     Extend the K dimension of input x by the number of ReLU's put on an affine layer in the original NN and update the
     values in the K dim by vals. (see j=K+i and j=else in case distinction in 2.2 in project paper).
@@ -52,10 +52,9 @@ def extend_Z(x, vals, l_0_u):
     :return:
     """
     K = x.shape[0]
-    pad = l_0_u.flatten().sum().int()
-    pad2 = np.prod(x.shape[1:])
-    x = pad_K_dim(x, pad.numpy())
-    x[K:, ...] = vals[l_0_u.bool().flatten(start_dim=0), ...]
+    pad = vals.shape[0]
+    x = pad_K_dim(x, pad)
+    x[K:, ...] = vals
     return x
 
 
@@ -270,7 +269,7 @@ class ToZ(nn.Module):
 
     def forward(self, x):
         pad = np.prod(x.shape[1:])
-        return extend_Z(x, torch.diagflat(self.eps).view([pad] + list(x.shape)[1:]), torch.ones(x.shape[1:]))
+        return extend_Z(x, torch.diagflat(self.eps).view([pad] + list(x.shape)[1:]))
 
 
 class ToZConv(ToZ):
@@ -363,8 +362,8 @@ class ReLUZ(nn.Module):
         _l = heaviside(l)
         l_0_u = (heaviside(u) * heaviside(-l))
 
-        d_1 = torch.einsum('..., i... -> i...', [-l, self.Lambdas])  # -l * self.lambdas
-        d_2 = torch.einsum('..., i... -> i...', [u, 1 - self.Lambdas])  # u * (1 - self.lambdas)
+        d_1 = torch.einsum('..., i... -> i...', [-l, self.diag(self.lambdas)])  # -l * self.lambdas
+        d_2 = torch.einsum('..., i... -> i...', [u, self.diag(1 - self.lambdas)])  # u * (1 - self.lambdas)
 
         # TODO: check if lambdas are bounded between [0,1]
         # check completed
@@ -374,14 +373,25 @@ class ReLUZ(nn.Module):
         # compute shift
         d = torch.max(d_1, d_2)
 
-        out = torch.einsum('..., k... -> k...', [_l, x]) + torch.einsum('..., ..., k... -> k...',
-                                                                        [l_0_u, self.lambdas, x])
-        out[0, ...] += l_0_u * (d / 2)[0, ...]
+        out = torch.einsum('..., k... -> k...', [_l, x]) + \
+              torch.einsum('..., ..., k... -> k...', [l_0_u, self.lambdas, x])
 
-        # print((d / 2 * l_0_u).shape, l_0_u.shape)
         appendix = torch.einsum('i..., ... -> i...', [d / 2, l_0_u])
+        out[0, ...] += appendix[0, ...]
 
-        return extend_Z(out, appendix, l_0_u)
+        #print('ReluZ: ', appendix.shape, l_0_u.shape, out.shape)
+        #print(self.diag(self.lambdas), self.lambdas)
+
+        return extend_Z(x, appendix[l_0_u.bool().flatten(start_dim=0)])
+
+
+class Diag(nn.Module):
+    def __init__(self, size, shape, *args, **kwargs):
+        super(Diag, self).__init__(*args, **kwargs)
+        self.eye = torch.eye(size).view([size] + list(shape))
+
+    def forward(self, diag):
+        return torch.einsum('i..., ... -> i...', [self.eye, diag])
 
 
 class ReLUZConv(ReLUZ):
@@ -394,17 +404,19 @@ class ReLUZConv(ReLUZ):
         self.lambdas = nn.Parameter(torch.ones([prod]))
         self.lambdas.requires_grad_()
 
-        self.Lambdas = torch.diagflat(self.lambdas).view([prod, n_channels, height, width])
+        # self.Lambdas = torch.diagflat(self.lambdas).view([prod, n_channels, height, width])
+        self.diag = Diag(prod, [n_channels, height, width])
 
 
 class ReLUZLinear(ReLUZ):
-    def __init__(self, fc_size, *args, **kwargs):
-        super(ReLUZLinear, self).__init__(*args, **kwargs)
+    def __init__(self, fc_size):
+        super(ReLUZLinear, self).__init__()
 
         self.lambdas = nn.Parameter(torch.ones([fc_size]))
         self.lambdas.requires_grad_()
 
-        self.Lambdas = torch.diagflat(self.lambdas)
+        #self.Lambdas = torch.diagflat(self.lambdas)
+        self.diag = Diag(fc_size, [fc_size])
 
 
 class PairwiseLoss(nn.Module):
