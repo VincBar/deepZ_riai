@@ -347,8 +347,9 @@ class Diag(nn.Module):
 
     def forward(self, diag):
         #return torch.einsum('i..., ... -> i...', [self.eye, diag])
-        self.eye[self.mask] = diag
-        return self.eye.clone()
+        eye = self.eye.clone()
+        eye[self.mask] = diag.flatten(start_dim=0)
+        return eye
 
 
 class ReLUZ(nn.Module):
