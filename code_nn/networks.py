@@ -411,10 +411,10 @@ class ReLUZ(nn.Module):
         out[0, ...] += l_0_u[0, ...] * (d / 2)[0, ...]
 
         ind=l_0_u.bool().flatten()
-        self.ones[self.mask]= self.lambdas.flatten()*d.flatten()/2
-        out_1 = extend_Z_old(out, d / 2 * l_0_u, l_0_u)
+        self.ones[self.mask]= (d/2).flatten()
+        #out_1 = extend_Z_old(out, d / 2 * l_0_u, l_0_u)
         out = extend_Z(out, self.ones[ind])
-        print(torch.all(torch.eq(out_1,out)))
+        #print(torch.all(torch.eq(out_1,out)))
 
         return out
 
