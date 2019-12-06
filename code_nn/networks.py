@@ -409,18 +409,18 @@ class ReLUZ(nn.Module):
 
         out = _l * x + l_0_u * self.lambdas * x
         out[0, ...] += l_0_u[0, ...] * (d / 2)[0, ...]
-        import time
-        start=time.time()
-        out_1 = extend_Z_old(out, d / 2 * l_0_u, l_0_u)
-        mid = time.time()
-        ind = l_0_u.bool().flatten()
-        #self.ones* (d/2)
-        out = extend_Z(out, (self.ones[ind]*(d/2)))
-        end = time.time()
+        #import time
 
-        print(torch.all(torch.eq(out_1,out)))
-        print("new",end-mid)
-        print("old",mid-start)
+        #start=time.time()
+        #out_1 = extend_Z_old(out, d / 2 * l_0_u, l_0_u)
+        #mid = time.time()
+        ind = l_0_u.bool().flatten()
+        out = extend_Z(out, (self.ones[ind]*(d/2)))
+        #end = time.time()
+
+        #print(torch.all(torch.eq(out_1,out)))
+        #print("new",end-mid)
+        #print("old",mid-start)
 
         return out
 
