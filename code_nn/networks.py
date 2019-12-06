@@ -62,6 +62,25 @@ def extend_Z(x, vals):
     x[K:, ...] = vals
     return x
 
+def extend_Z_old(x, vals, l_0_u):
+    """
+    Extend the K dimension of input x by the number of ReLU's put on an affine layer in the original NN and update the
+    values in the K dim by vals. (see j=K+i and j=else in case distinction in 2.2 in project paper).
+    :param x:
+    :param vals: one-dimensional tensor
+    :return:
+    """
+    K = x.shape[0]
+    pad = l_0_u.flatten().sum().int()
+    pad2 = np.prod(x.shape[1:])
+    x = pad_K_dim(x, pad.numpy())
+    if is_scalar(vals):
+        vals = vals * torch.ones(pad2)
+
+    # TODO: check this!!
+
+    x[K:, ...] = torch.diagflat(vals).view([pad2] + list(x.shape[1:]))[l_0_u.bool().flatten(), ...]
+    return x
 
 class ClipLambdas(object):
     def __call__(self, module):
@@ -383,8 +402,11 @@ class ReLUZ(nn.Module):
         start=time.time()
         out=extend_Z(out, self.ones[l_0_u.bool().flatten()] * d / 2)
         mid = time.time()
-        extend_Z_old(out,self.la)
+        out_old=extend_Z_old(out,l_0_u*self.lambdas*d/2,l_0_u)
         end = time.time()
+        print("old_step",end-mid)
+        print("new_step",mid-start)
+        print(torch.all(torch.eq(out,out_old)))
         return out
 
         # # TODO: I don't know if the following is computed in parallel, if written like this  # # input is (K, c_in, H, W) or (K, fc_size)  #  # l_t, u_t = lower_bound(x)[None, :], upper_bound(x)[None, :]  # _l_t = heaviside(l_t)  # l_0_u_t = (heaviside(u_t) * heaviside(-l_t))  #  # lambda_crit_t = u_t / (u_t - l_t)  # is_lower = self.lambdas < lambda_crit_t  # is_larger = torch.logical_not(is_lower)  #  # # TODO: check if lambdas are bounded between [0,1]  # # TODO: check if broadcasting of lambdas works as expected  # # check completed see test_conv_pad  #  # # compute shift  # d_t = torch.zeros(self.lambdas.shape)  # d_t[is_larger] = - l_t[is_larger]  # d_t[is_lower] = (1 - self.lambdas[is_lower])/self.lambdas[is_lower] * u_t[is_lower]  #  # out_t = _l_t * x + l_0_u_t * self.lambdas * x  # out_t[0, ...] += l_0_u_t[0, ...] * (self.lambdas * d_t / 2)[0, ...]  # torch.all(out_t==out)  #  # return extend_Z(out_t, self.lambdas * d_t/2 * l_0_u_t, l_0_u_t)
