@@ -57,6 +57,26 @@ def extend_Z(x, vals):
     x[K:, ...] = vals
     return x
 
+def extend_Z_old(x, vals, l_0_u):
+    """
+    Extend the K dimension of input x by the number of ReLU's put on an affine layer in the original NN and update the
+    values in the K dim by vals. (see j=K+i and j=else in case distinction in 2.2 in project paper).
+    :param x:
+    :param vals: one-dimensional tensor
+    :return:
+    """
+    K = x.shape[0]
+    pad = l_0_u.flatten().sum().int()
+    pad2 = np.prod(x.shape[1:])
+    x = pad_K_dim(x, pad.numpy())
+    if is_scalar(vals):
+        vals = vals * torch.ones(pad2)
+
+    # TODO: check this!!
+
+    x[K:, ...] = torch.diagflat(vals).view([pad2] + list(x.shape[1:]))[l_0_u.bool().flatten(), ...]
+    return x
+
 
 class ClipLambdas(object):
     def __call__(self, module):
@@ -338,18 +358,18 @@ class EndLayerZ(nn.Module):
         out = lower_bound(x)
         return out
 
-
-class Diag(nn.Module):
-    def __init__(self, size, shape, *args, **kwargs):
-        super(Diag, self).__init__(*args, **kwargs)
-        self.eye = torch.eye(size).view([size] + list(shape))
-        self.mask = self.eye > 0
-
-    def forward(self, diag):
-        #return torch.einsum('i..., ... -> i...', [self.eye, diag])
-        eye = self.eye.clone()
-        eye[self.mask] = diag.flatten(start_dim=0)
-        return eye
+#
+# class Diag(nn.Module):
+#     def __init__(self, size, shape, *args, **kwargs):
+#         super(Diag, self).__init__(*args, **kwargs)
+#         self.eye = torch.eye(size).view([size] + list(shape))
+#         self.mask = self.eye > 0
+#
+#     def forward(self, diag):
+#         #return torch.einsum('i..., ... -> i...', [self.eye, diag])
+#         eye = self.eye.clone()
+#         eye[self.mask] = diag.flatten(start_dim=0)
+#         return eye
 
 
 class ReLUZ(nn.Module):
@@ -371,9 +391,10 @@ class ReLUZ(nn.Module):
         # TODO: I don't know if the following is computed in parallel, if written like this
         # input is (K, c_in, H, W) or (K, fc_size)
 
-        l, u = lower_bound(x), upper_bound(x)
+
+        l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
         _l = heaviside(l)
-        l_0_u = (heaviside(u) * heaviside(-l)).bool()
+        l_0_u = (heaviside(u) * heaviside(-l))
 
         d_1 = -l * self.lambdas
         d_2 = u * (1 - self.lambdas)
@@ -386,38 +407,29 @@ class ReLUZ(nn.Module):
         # compute shift
         d = torch.max(d_1, d_2)
 
-        out = _l[None, :] * x + l_0_u[None, :] * self.lambdas[None, :] * x
-        appendix = (d / 2) * l_0_u
-
         out = _l * x + l_0_u * self.lambdas * x
         out[0, ...] += l_0_u[0, ...] * (d / 2)[0, ...]
-        #self.ones[l_0_u.bool().flatten()]*d[0][l_0_u.bool().flatten()][:,None]
-        import time
-        print(torch.all(torch.eq(extend_Z_old(out, d / 2 * l_0_u, l_0_u),extend_Z(out, self.ones[l_0_u.bool().flatten()] * d / 2))))
-        start=time.time()
-        extend_Z_old(out, d / 2 * l_0_u, l_0_u)
-        mid = time.time()
-        out=extend_Z(out, self.ones[l_0_u.bool().flatten()] * d / 2)
-        end = time.time()
-        print("new_step",end-mid)
-        print("old_step",mid-start)
+
+        ind=l_0_u.bool().flatten()
+        self.ones[self.mask]= self.lambdas.flatten()*d.flatten()/2
+        out_1 = extend_Z_old(out, d / 2 * l_0_u, l_0_u)
+        out = extend_Z(out, self.ones[ind])
+        print(torch.all(torch.eq(out_1,out)))
+
         return out
-
-        out[0, ...] += appendix
-
-        return extend_Z(out, self.diag(appendix)[l_0_u.bool().flatten()])
 
 
 class ReLUZConv(ReLUZ):
     def __init__(self, n_channels, height, width, *args, **kwargs):
         super(ReLUZConv, self).__init__(*args, **kwargs)
 
-        self.lambdas = nn.Parameter(torch.ones([n_channels, height, width]))
+        self.lambdas = nn.Parameter(torch.ones([1, n_channels, height, width]))
         self.lambdas.requires_grad_()
 
         prod = n_channels * height * width
-        self.diag = Diag(prod, [n_channels, height, width])
 
+        self.ones = torch.diagflat(torch.ones([1, n_channels, height, width])).view([prod] + [n_channels,height,width])
+        self.mask = self.ones > 0
 
 class ReLUZLinear(ReLUZ):
     def __init__(self, fc_size, *args, **kwargs):
@@ -426,8 +438,8 @@ class ReLUZLinear(ReLUZ):
         self.lambdas = nn.Parameter(torch.ones([1, fc_size]))
         self.lambdas.requires_grad_()
 
-        self.diag = Diag(fc_size, [fc_size])
-
+        self.ones = torch.diagflat(torch.ones([1,fc_size])).view([fc_size] + [fc_size])
+        self.mask = self.ones > 0
 
 class PairwiseLoss(nn.Module):
     def __init__(self, trained_digit):
