@@ -343,9 +343,12 @@ class Diag(nn.Module):
     def __init__(self, size, shape, *args, **kwargs):
         super(Diag, self).__init__(*args, **kwargs)
         self.eye = torch.eye(size).view([size] + list(shape))
+        self.mask = self.eye > 0
 
     def forward(self, diag):
-        return torch.einsum('i..., l... -> i...', [self.eye, diag])
+        #return torch.einsum('i..., ... -> i...', [self.eye, diag])
+        self.eye[self.mask] = diag
+        return self.eye.clone()
 
 
 class ReLUZ(nn.Module):
@@ -386,9 +389,9 @@ class ReLUZ(nn.Module):
         #                                                                 [l_0_u, self.lambdas, x])
 
         out = _l[None, :] * x + l_0_u[None, :] * self.lambdas[None, :] * x
-        appendix = ((d / 2) * l_0_u)[None, :]
+        appendix = (d / 2) * l_0_u
 
-        out[0, ...] += appendix[0, ...]
+        out[0, ...] += appendix
 
         return extend_Z(out, self.diag(appendix)[l_0_u.bool().flatten()])
 
@@ -396,14 +399,11 @@ class ReLUZ(nn.Module):
 class ReLUZConv(ReLUZ):
     def __init__(self, n_channels, height, width, *args, **kwargs):
         super(ReLUZConv, self).__init__(*args, **kwargs)
-        # TODO: Currently all lambdas are initialized as one.
-        # Maybe the initialization can be learned number specific, smallest area
-        # TODO: Only add rows that are actually relevant
-        prod = n_channels * height * width
 
         self.lambdas = nn.Parameter(torch.ones([n_channels, height, width]))
         self.lambdas.requires_grad_()
 
+        prod = n_channels * height * width
         self.diag = Diag(prod, [n_channels, height, width])
 
 
