@@ -1,6 +1,6 @@
 import torch
 import sys
-sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
+sys.path.append('D:/Dokumente/GitHub/RAI_proj/code_nn')
 from code.networks import ReLUZLinear, extend_Z
 
 # Let x be the current zonotope. In the linear case x.shape = (K, fc_size).

@@ -1,6 +1,6 @@
 import torch
 import sys
-sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
+sys.path.append('D:/Dokumente/GitHub/RAI_proj/code_nn')
 from code.networks import LinearZ
 
 # Let x the current zonotope. In the fully connected case x.shape = (K, fc_size).

@@ -2,7 +2,7 @@ import argparse
 import torch
 import time
 
-#sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
+#sys.path.append('D:/Dokumente/GitHub/RAI_proj/code_nn')
 import sys
 sys.path.insert(0, '..')
 
