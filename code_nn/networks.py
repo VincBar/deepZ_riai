@@ -391,7 +391,6 @@ class ReLUZ(nn.Module):
         # TODO: I don't know if the following is computed in parallel, if written like this
         # input is (K, c_in, H, W) or (K, fc_size)
 
-
         l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
         _l = heaviside(l)
         l_0_u = (heaviside(u) * heaviside(-l))
@@ -437,6 +436,7 @@ class ReLUZConv(ReLUZ):
         self.ones = torch.diagflat(torch.ones([1, n_channels, height, width])).view([prod] + [n_channels,height,width])
         self.mask = self.ones > 0
 
+
 class ReLUZLinear(ReLUZ):
     def __init__(self, fc_size, *args, **kwargs):
         super(ReLUZLinear, self).__init__(*args, **kwargs)
@@ -446,6 +446,7 @@ class ReLUZLinear(ReLUZ):
 
         self.ones = torch.diagflat(torch.ones([1,fc_size])).view([fc_size] + [fc_size])
         self.mask = self.ones > 0
+
 
 class PairwiseLoss(nn.Module):
     def __init__(self, trained_digit):
@@ -463,9 +464,18 @@ class GlobalLoss(nn.Module):
     def __init__(self, reg):
         super(GlobalLoss, self).__init__()
         self.reg = reg
+        self.non_verified_digits = torch.ones(10).bool()
 
     def forward(self, x):
-        loss = - torch.sum(x) + self.reg / x.shape[0] * torch.sum(torch.pdist(x.view((x.shape[0], 1)), p=1))
-        is_verified = torch.prod(heaviside(x, zero_pos=True)).bool()
+        loss = - torch.sum(x[self.non_verified_digits]) \
+               + self.reg / x[self.non_verified_digits].shape[0] * \
+               torch.sum(torch.pdist(x[self.non_verified_digits].view((x[self.non_verified_digits].shape[0], 1)), p=1))
+
+        verifs = heaviside(x, zero_pos=True)
+        is_verified = torch.prod(verifs[self.non_verified_digits]).bool()
+
+        self.non_verified_digits = torch.logical_not(verifs.bool())
+
+        # print(self.non_verified_digits, verifs)
 
         return loss, is_verified
