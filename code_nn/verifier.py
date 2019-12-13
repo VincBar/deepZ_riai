@@ -108,11 +108,13 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
     return res
 
 
-def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None, early_stop=None, early_stop_window=2):
+def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None, early_stop=None, early_stop_window=10):
     is_verified = False
     counter = 0
 
-    hist_losses = deque(maxlen=early_stop_window)
+    #hist_losses = deque(maxlen=early_stop_window)
+    hist_losses = deque(maxlen=2)
+
     start_time = time.time()
 
     in_time = True
@@ -122,14 +124,14 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None, ear
         net.zero_grad()
 
         out = net(inputs)
-        lss, is_verified = loss(out)
-        hist_losses.append(float(lss.detach()))
+        lss, is_verified,ind = loss(out)
+        hist_losses.append(out.detach().numpy())
 
         print(lss, loss, out)
         # print(hist_losses, abs(np.diff(hist_losses).mean()), abs(np.diff(hist_losses).mean()) < early_stop)
         if not is_verified:
 
-            if early_stop and len(hist_losses) > 1 and abs(np.diff(hist_losses).mean()) < early_stop:
+            if not ind:
                 continue_ = False
                 break
 
@@ -238,7 +240,7 @@ def main():
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
     start_time = time.time()
-    if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=120, tensorboard=False, global_init=True,
+    if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=400, tensorboard=False, global_init=False,
                early_stop=10):
         print('verified')
         print(time.time()-start_time)

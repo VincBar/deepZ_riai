@@ -457,7 +457,7 @@ class PairwiseLoss(nn.Module):
     def forward(self, x):
         loss = - x[self.trained_digit]
         is_verified = torch.sum(heaviside(x)[torch.LongTensor(self.non_verified)]) > 0
-        return loss, is_verified
+        return loss, is_verified, torch.Tensor([True])
 
 
 class GlobalLoss(nn.Module):
@@ -465,17 +465,18 @@ class GlobalLoss(nn.Module):
         super(GlobalLoss, self).__init__()
         self.reg = reg
         self.non_verified_digits = torch.ones(10).bool()
+        self.out_hist = torch.ones(10)*(-np.inf)
 
     def forward(self, x):
-        loss = - torch.sum(x[self.non_verified_digits]) \
-               + self.reg / x[self.non_verified_digits].shape[0] * \
-               torch.sum(torch.pdist(x[self.non_verified_digits].view((x[self.non_verified_digits].shape[0], 1)), p=1))
+        with torch.no_grad():
+            verifs = heaviside(x, zero_pos=True)
+            is_verified = torch.prod(verifs[self.non_verified_digits]).bool()
+            self.non_verified_digits = torch.logical_not(verifs.bool())
+            tmp=torch.all(self.out_hist < x)
+            self.out_hist[self.non_verified_digits] = x[self.non_verified_digits].detach().clone()
 
-        verifs = heaviside(x, zero_pos=True)
-        is_verified = torch.prod(verifs[self.non_verified_digits]).bool()
-
-        self.non_verified_digits = torch.logical_not(verifs.bool())
+        loss = - torch.sum(x[self.non_verified_digits])
 
         # print(self.non_verified_digits, verifs)
 
-        return loss, is_verified
+        return loss, is_verified,tmp
