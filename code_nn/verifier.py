@@ -61,7 +61,7 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
             res, out = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec,
                                         early_stop=early_stop)
 
-            non_verified_digits -= set(np.where(out > 0)[0])
+            non_verified_digits -= set(np.where(loss.non_verified_digits)[0])
 
         while not not non_verified_digits and in_time:
             optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
