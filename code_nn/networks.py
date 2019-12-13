@@ -57,6 +57,26 @@ def extend_Z(x, vals):
     x[K:, ...] = vals
     return x
 
+def extend_Z_old(x, vals, l_0_u):
+    """
+    Extend the K dimension of input x by the number of ReLU's put on an affine layer in the original NN and update the
+    values in the K dim by vals. (see j=K+i and j=else in case distinction in 2.2 in project paper).
+    :param x:
+    :param vals: one-dimensional tensor
+    :return:
+    """
+    K = x.shape[0]
+    pad = l_0_u.flatten().sum().int()
+    pad2 = np.prod(x.shape[1:])
+    x = pad_K_dim(x, pad.numpy())
+    if is_scalar(vals):
+        vals = vals * torch.ones(pad2)
+
+    # TODO: check this!!
+
+    x[K:, ...] = torch.diagflat(vals).view([pad2] + list(x.shape[1:]))[l_0_u.bool().flatten(), ...]
+    return x
+
 
 class ClipLambdas(object):
     def __call__(self, module):
@@ -338,6 +358,19 @@ class EndLayerZ(nn.Module):
         out = lower_bound(x)
         return out
 
+#
+# class Diag(nn.Module):
+#     def __init__(self, size, shape, *args, **kwargs):
+#         super(Diag, self).__init__(*args, **kwargs)
+#         self.eye = torch.eye(size).view([size] + list(shape))
+#         self.mask = self.eye > 0
+#
+#     def forward(self, diag):
+#         #return torch.einsum('i..., ... -> i...', [self.eye, diag])
+#         eye = self.eye.clone()
+#         eye[self.mask] = diag.flatten(start_dim=0)
+#         return eye
+
 
 class ReLUZ(nn.Module):
     """
@@ -358,12 +391,12 @@ class ReLUZ(nn.Module):
         # TODO: I don't know if the following is computed in parallel, if written like this
         # input is (K, c_in, H, W) or (K, fc_size)
 
-        l, u = lower_bound(x), upper_bound(x)
+        l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
         _l = heaviside(l)
         l_0_u = (heaviside(u) * heaviside(-l))
 
-        d_1 = torch.einsum('..., i... -> i...', [-l, self.diag(self.lambdas)])  # -l * self.lambdas
-        d_2 = torch.einsum('..., i... -> i...', [u, self.diag(1 - self.lambdas)])  # u * (1 - self.lambdas)
+        d_1 = -l * self.lambdas
+        d_2 = u * (1 - self.lambdas)
 
         # TODO: check if lambdas are bounded between [0,1]
         # check completed
@@ -373,50 +406,46 @@ class ReLUZ(nn.Module):
         # compute shift
         d = torch.max(d_1, d_2)
 
-        out = torch.einsum('..., k... -> k...', [_l, x]) + \
-              torch.einsum('..., ..., k... -> k...', [l_0_u, self.lambdas, x])
+        out = _l * x + l_0_u * self.lambdas * x
+        out[0, ...] += l_0_u[0, ...] * (d / 2)[0, ...]
+        #import time
 
-        appendix = torch.einsum('i..., ... -> i...', [d / 2, l_0_u])
-        out[0, ...] += appendix[0, ...]
+        #start=time.time()
+        #out_1 = extend_Z_old(out, d / 2 * l_0_u, l_0_u)
+        #mid = time.time()
+        ind = l_0_u.bool().flatten()
+        out = extend_Z(out, (self.ones[ind]*(d/2)))
+        #end = time.time()
 
-        #print('ReluZ: ', appendix.shape, l_0_u.shape, out.shape)
-        #print(self.diag(self.lambdas), self.lambdas)
+        #print(torch.all(torch.eq(out_1,out)))
+        #print("new",end-mid)
+        #print("old",mid-start)
 
-        return extend_Z(x, appendix[l_0_u.bool().flatten(start_dim=0)])
-
-
-class Diag(nn.Module):
-    def __init__(self, size, shape, *args, **kwargs):
-        super(Diag, self).__init__(*args, **kwargs)
-        self.eye = torch.eye(size).view([size] + list(shape))
-
-    def forward(self, diag):
-        return torch.einsum('i..., ... -> i...', [self.eye, diag])
+        return out
 
 
 class ReLUZConv(ReLUZ):
     def __init__(self, n_channels, height, width, *args, **kwargs):
         super(ReLUZConv, self).__init__(*args, **kwargs)
-        # TODO: Currently all lambdas are initialized as one.
-        # Maybe the initialization can be learned number specific, smallest area
-        # TODO: Only add rows that are actually relevant
-        prod = n_channels * height * width
-        self.lambdas = nn.Parameter(torch.ones([prod]))
+
+        self.lambdas = nn.Parameter(torch.ones([1, n_channels, height, width]))
         self.lambdas.requires_grad_()
 
-        # self.Lambdas = torch.diagflat(self.lambdas).view([prod, n_channels, height, width])
-        self.diag = Diag(prod, [n_channels, height, width])
+        prod = n_channels * height * width
+
+        self.ones = torch.diagflat(torch.ones([1, n_channels, height, width])).view([prod] + [n_channels,height,width])
+        self.mask = self.ones > 0
 
 
 class ReLUZLinear(ReLUZ):
     def __init__(self, fc_size):
         super(ReLUZLinear, self).__init__()
 
-        self.lambdas = nn.Parameter(torch.ones([fc_size]))
+        self.lambdas = nn.Parameter(torch.ones([1, fc_size]))
         self.lambdas.requires_grad_()
 
-        #self.Lambdas = torch.diagflat(self.lambdas)
-        self.diag = Diag(fc_size, [fc_size])
+        self.ones = torch.diagflat(torch.ones([1,fc_size])).view([fc_size] + [fc_size])
+        self.mask = self.ones > 0
 
 
 class PairwiseLoss(nn.Module):
@@ -428,16 +457,26 @@ class PairwiseLoss(nn.Module):
     def forward(self, x):
         loss = - x[self.trained_digit]
         is_verified = torch.sum(heaviside(x)[torch.LongTensor(self.non_verified)]) > 0
-        return loss, is_verified
+        return loss, is_verified, torch.Tensor([True])
 
 
 class GlobalLoss(nn.Module):
     def __init__(self, reg):
         super(GlobalLoss, self).__init__()
         self.reg = reg
+        self.non_verified_digits = torch.ones(10).bool()
+        self.out_hist = torch.ones(10)*(-np.inf)
 
     def forward(self, x):
-        loss = - torch.sum(x) + self.reg / x.shape[0] * torch.sum(torch.pdist(x.view((x.shape[0], 1)), p=1))
-        is_verified = torch.prod(heaviside(x, zero_pos=True)).bool()
+        with torch.no_grad():
+            verifs = heaviside(x, zero_pos=True)
+            is_verified = torch.prod(verifs[self.non_verified_digits]).bool()
+            self.non_verified_digits = torch.logical_not(verifs.bool()) & self.non_verified_digits
+            tmp = torch.all(self.out_hist < x)
+            self.out_hist[self.non_verified_digits] = x[self.non_verified_digits].detach().clone()
 
-        return loss, is_verified
+        loss = - torch.sum(x[self.non_verified_digits])
+
+        # print(self.non_verified_digits, verifs)
+
+        return loss, is_verified,tmp

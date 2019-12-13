@@ -1,6 +1,6 @@
 import torch
 import sys
-sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
+sys.path.append('D:/Dokumente/GitHub/RAI_proj/code_nn')
 from code.networks import extend_Z
 
 # Let x the current zonotope. In the conv case x.shape = (K, C, H, W).
