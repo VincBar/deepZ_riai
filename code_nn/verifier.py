@@ -33,7 +33,6 @@ def check_weights(net_name, netZ):
 def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxsec=None, time_info=False,
             global_init=False, early_stop=1):
     # TODO: think hard about this one, we want to avoid local minima
-    optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
 
     if tensorboard:
         from torch.utils.tensorboard import SummaryWriter
@@ -53,6 +52,7 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
 
         # run an initialization based on the global loss
         if global_init:
+            optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
             loss = GlobalLoss(0.1)
 
             writer = None
@@ -64,6 +64,7 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
             non_verified_digits -= set(np.where(out > 0)[0])
 
         while not not non_verified_digits and in_time:
+            optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
             i = list(non_verified_digits)[0]
 
             # initialize lambdas,
@@ -89,6 +90,7 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
                 in_time = (time.time() - start_time) < maxsec
 
     else:
+        optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
         loss = GlobalLoss(0.01)
 
         start_time = time.time()
