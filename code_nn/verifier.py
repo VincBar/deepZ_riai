@@ -52,7 +52,7 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
 
         # run an initialization based on the global loss
         if global_init:
-            optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
+            optimizer = torch.optim.Adam(net.parameters(), lr=0.05)
             loss = GlobalLoss(0.1)
 
             writer = None
@@ -242,7 +242,7 @@ def main():
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
     start_time = time.time()
-    if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=400, tensorboard=False, global_init=False,
+    if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=400, tensorboard=False, global_init=True,
                early_stop=10):
         print('verified')
         print(time.time()-start_time)
