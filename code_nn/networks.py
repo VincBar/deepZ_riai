@@ -472,6 +472,7 @@ class GlobalLoss(nn.Module):
             verifs = heaviside(x, zero_pos=True)
             is_verified = torch.prod(verifs[self.non_verified_digits]).bool()
             self.non_verified_digits = torch.logical_not(verifs.bool()) & self.non_verified_digits
+
             tmp = torch.all(self.out_hist < x)
             self.out_hist[self.non_verified_digits] = x[self.non_verified_digits].detach().clone()
 
