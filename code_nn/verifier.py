@@ -1,7 +1,7 @@
 import argparse
 import torch
 import time
-from collections import deque
+import copy
 
 #sys.path.append('D:/Dokumente/GitHub/RAI_proj/code_nn')
 import sys
@@ -53,13 +53,14 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
         # run an initialization based on the global loss
         if global_init:
             optimizer = torch.optim.Adam(net.parameters(), lr=0.05)
+            # optimizer = torch.optim.ASGD(net.parameters(), lr=0.05)
+            # optimizer = torch.optim.SGD(net.parameters(), lr=0.5)
             loss = GlobalLoss(0.1)
 
             writer = None
             if tensorboard:
                 writer = SummaryWriter('../runs/global_init_' + tim)
-            res, out = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec,
-                                        early_stop=early_stop)
+            res, out = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec)
 
             non_verified_digits -= set(np.where(torch.logical_not(loss.non_verified_digits))[0])
 
@@ -110,12 +111,11 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
     return res
 
 
-def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None, early_stop=None, early_stop_window=10):
+def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
+
+    orig_optimizer = copy.deepcopy(optimizer)
     is_verified = False
     counter = 0
-
-    #hist_losses = deque(maxlen=early_stop_window)
-    hist_losses = deque(maxlen=2)
 
     start_time = time.time()
 
@@ -126,15 +126,13 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None, ear
         net.zero_grad()
 
         out = net(inputs)
-        lss, is_verified, ind = loss(out)
-        hist_losses.append(out.detach().numpy())
+        lss, is_verified, continue_, reset_optim = loss(out)
 
-        # print(lss, loss, out)
-        # print(hist_losses, abs(np.diff(hist_losses).mean()), abs(np.diff(hist_losses).mean()) < early_stop)
+        # print(lss, loss, out, id(optimizer))
         if not is_verified:
-            if not ind:
-                continue_ = False
-                break
+            # print(reset_optim)
+            if reset_optim:
+                optimizer = copy.deepcopy(orig_optimizer)
 
             lss.backward()
             optimizer.step()
