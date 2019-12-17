@@ -479,4 +479,4 @@ class GlobalLoss(nn.Module):
 
         # print(self.non_verified_digits, verifs)
 
-        return loss, is_verified,tmp
+        return loss, is_verified, tmp

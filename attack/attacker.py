@@ -10,7 +10,7 @@ from advertorch.attacks import LinfPGDAttack
 
 import sys
 
-sys.path.insert(0, '../code_nn')
+sys.path.insert(0, '..')
 
 import code_nn
 from code_nn import verifier
@@ -58,11 +58,11 @@ def load_nets(eps=0, target=0, zonotope=False):
     """
     nets = OrderedDict([])
     if type(eps) is int:
-        eps = [float(eps)] * len(code.verifier.NET_CHOICES)
+        eps = [float(eps)] * len(code_nn.verifier.NET_CHOICES)
 
-    neteps = zip(code.verifier.NET_CHOICES, eps)
+    neteps = zip(code_nn.verifier.NET_CHOICES, eps)
     for net_name, eps in neteps:
-        net, netZ = code.verifier.load_net(net_name, eps=eps, target=target)
+        net, netZ = code_nn.verifier.load_net(net_name, eps=eps, target=target)
         if zonotope:
             net = netZ
         nets[net_name] = net
@@ -165,7 +165,7 @@ def verify(data, labels, eps, n_jobs=4, maxsec=120, tensorboard=False, pairwise=
         non_robust_net = np.where(eps[:, i] < np.inf)[0]
         netZs_epss = [(netZ, eps[j, i]) for j, netZ in enumerate(netZs.values()) if j in non_robust_net]
 
-        jobs = [partial(code.verifier.analyze, net=netZ, inputs=digit[None, :], true_label=label, eps=eps,
+        jobs = [partial(code_nn.verifier.analyze, net=netZ, inputs=digit[None, :], true_label=label, eps=eps,
                         pairwise=pairwise, tensorboard=tensorboard, maxsec=maxsec, time_info=True)
                 for netZ, eps in netZs_epss]
 
@@ -256,7 +256,7 @@ def check_verify_first(data, labels, eps, n_jobs=4, pairwise=True, maxsec=120, *
     :param kwargs:
     :return:
     """
-    eps_verif = np.ones((len(code.verifier.NET_CHOICES), data.shape[0])) * eps
+    eps_verif = np.ones((len(code_nn.verifier.NET_CHOICES), data.shape[0])) * eps
     is_verified, run_times = verify(data, labels, eps_verif, n_jobs=n_jobs, pairwise=pairwise, maxsec=maxsec,
                                     *args, **kwargs)
 
