@@ -31,8 +31,7 @@ def check_weights(net_name, netZ):
 
 
 def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxsec=None, time_info=False,
-            global_init=False, early_stop=1):
-    # TODO: think hard about this one, we want to avoid local minima
+            global_init=False):
 
     if tensorboard:
         from torch.utils.tensorboard import SummaryWriter
@@ -52,24 +51,27 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
 
         # run an initialization based on the global loss
         if global_init:
+            # TODO: think hard about this one, we want to avoid local minima
+            # the approach seems to be sufficient
             optimizer = torch.optim.Adam(net.parameters(), lr=0.05)
-            loss = GlobalLoss(0.1)
+            loss = GlobalLoss()
 
             writer = None
             if tensorboard:
                 writer = SummaryWriter('../runs/global_init_' + tim)
-            res, out = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec,
-                                        early_stop=early_stop)
+            res, out = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec)
 
             non_verified_digits -= set(np.where(torch.logical_not(loss.non_verified_digits))[0])
-            print(non_verified_digits)
+
         while not not non_verified_digits and in_time:
             optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
             i = list(non_verified_digits)[0]
 
             # initialize lambdas,
             # TODO: do we restart from scratch for each digit? we could try warm starting, maybe for 'similar' digits
+            # the amount of test cases where we know the result is not sufficient
             # TODO: search good initialization
+            # we take minimum area slopes which is in the setting of non-comparable settings reasonable
 
             writer = None
             if tensorboard:
@@ -91,7 +93,7 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
 
     else:
         optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
-        loss = GlobalLoss(0.01)
+        loss = GlobalLoss()
 
         start_time = time.time()
         net.initialize(inputs, eps)
@@ -110,12 +112,10 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
     return res
 
 
-def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None, early_stop=None, early_stop_window=10):
+def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
     is_verified = False
     counter = 0
 
-    #hist_losses = deque(maxlen=early_stop_window)
-    hist_losses = deque(maxlen=2)
 
     start_time = time.time()
 
@@ -127,10 +127,8 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None, ear
 
         out = net(inputs)
         lss, is_verified,ind = loss(out)
-        hist_losses.append(out.detach().numpy())
 
-        print(lss, loss, out)
-        # print(hist_losses, abs(np.diff(hist_losses).mean()), abs(np.diff(hist_losses).mean()) < early_stop)
+        #print(lss, loss, out)
         if not is_verified:
 
             if not ind:
@@ -163,7 +161,7 @@ def fix_weights(net):
 
 
 def loadZ(net, state_dict):
-    # there is one layer more in netZ (ToZ), so shift layer names.
+    # there are two more layers in netZ (ToZ), so shift layer names.
     state_dict_shifted = OrderedDict([])
     for key, val in state_dict.items():
         pre, nr, param = key.split('.')
@@ -242,10 +240,8 @@ def main():
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
     start_time = time.time()
-    if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=400, tensorboard=False, global_init=True,
-               early_stop=10):
+    if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=400, tensorboard=False, global_init=True):
         print('verified')
-        print(time.time()-start_time)
     else:
         print('not verified')
 

@@ -57,26 +57,6 @@ def extend_Z(x, vals):
     x[K:, ...] = vals
     return x
 
-def extend_Z_old(x, vals, l_0_u):
-    """
-    Extend the K dimension of input x by the number of ReLU's put on an affine layer in the original NN and update the
-    values in the K dim by vals. (see j=K+i and j=else in case distinction in 2.2 in project paper).
-    :param x:
-    :param vals: one-dimensional tensor
-    :return:
-    """
-    K = x.shape[0]
-    pad = l_0_u.flatten().sum().int()
-    pad2 = np.prod(x.shape[1:])
-    x = pad_K_dim(x, pad.numpy())
-    if is_scalar(vals):
-        vals = vals * torch.ones(pad2)
-
-    # TODO: check this!!
-
-    x[K:, ...] = torch.diagflat(vals).view([pad2] + list(x.shape[1:]))[l_0_u.bool().flatten(), ...]
-    return x
-
 
 class ClipLambdas(object):
     def __call__(self, module):
@@ -358,19 +338,6 @@ class EndLayerZ(nn.Module):
         out = lower_bound(x)
         return out
 
-#
-# class Diag(nn.Module):
-#     def __init__(self, size, shape, *args, **kwargs):
-#         super(Diag, self).__init__(*args, **kwargs)
-#         self.eye = torch.eye(size).view([size] + list(shape))
-#         self.mask = self.eye > 0
-#
-#     def forward(self, diag):
-#         #return torch.einsum('i..., ... -> i...', [self.eye, diag])
-#         eye = self.eye.clone()
-#         eye[self.mask] = diag.flatten(start_dim=0)
-#         return eye
-
 
 class ReLUZ(nn.Module):
     """
@@ -389,6 +356,7 @@ class ReLUZ(nn.Module):
 
     def forward(self, x):
         # TODO: I don't know if the following is computed in parallel, if written like this
+        # I dont think so but not too relevant
         # input is (K, c_in, H, W) or (K, fc_size)
 
         l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
@@ -461,9 +429,8 @@ class PairwiseLoss(nn.Module):
 
 
 class GlobalLoss(nn.Module):
-    def __init__(self, reg):
+    def __init__(self):
         super(GlobalLoss, self).__init__()
-        self.reg = reg
         self.non_verified_digits = torch.ones(10).bool()
         self.out_hist = torch.ones(10)*(-np.inf)
 
