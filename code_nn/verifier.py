@@ -1,7 +1,6 @@
 import argparse
 import torch
 import time
-import copy
 
 #sys.path.append('D:/Dokumente/GitHub/RAI_proj/code_nn')
 import sys
@@ -32,7 +31,6 @@ def check_weights(net_name, netZ):
 
 def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxsec=None, time_info=False,
             global_init=False):
-    # TODO: think hard about this one, we want to avoid local minima
 
     if tensorboard:
         from torch.utils.tensorboard import SummaryWriter
@@ -52,8 +50,10 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
 
         # run an initialization based on the global loss
         if global_init:
-            optimizer = (torch.optim.Adam, {'lr': 0.05}, 1)
-            loss = GlobalLoss(0.1)
+            # TODO: think hard about this one, we want to avoid local minima
+            # the approach seems to be sufficient
+            optimizer = torch.optim.Adam(net.parameters(), lr=0.05)
+            loss = GlobalLoss()
 
             writer = None
             if tensorboard:
@@ -68,7 +68,9 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
 
             # initialize lambdas,
             # TODO: do we restart from scratch for each digit? we could try warm starting, maybe for 'similar' digits
+            # the amount of test cases where we know the result is not sufficient
             # TODO: search good initialization
+            # we take minimum area slopes which is in the setting of non-comparable settings reasonable
 
             writer = None
             if tensorboard:
@@ -90,7 +92,7 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
 
     else:
         optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
-        loss = GlobalLoss(0.01)
+        loss = GlobalLoss()
 
         start_time = time.time()
         net.initialize(inputs, eps)
@@ -163,7 +165,7 @@ def fix_weights(net):
 
 
 def loadZ(net, state_dict):
-    # there is one layer more in netZ (ToZ), so shift layer names.
+    # there are two more layers in netZ (ToZ), so shift layer names.
     state_dict_shifted = OrderedDict([])
     for key, val in state_dict.items():
         pre, nr, param = key.split('.')
@@ -244,7 +246,6 @@ def main():
     start_time = time.time()
     if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=400, tensorboard=False, global_init=True):
         print('verified')
-        print(time.time()-start_time)
     else:
         print('not verified')
 
@@ -253,5 +254,5 @@ def main():
 
 
 if __name__ == '__main__':
-    torch.autograd.set_detect_anomaly(True)
+    #torch.autograd.set_detect_anomaly(True)
     main()
