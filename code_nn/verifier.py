@@ -1,7 +1,6 @@
 import argparse
 import torch
 import time
-from collections import deque
 
 #sys.path.append('D:/Dokumente/GitHub/RAI_proj/code_nn')
 import sys
