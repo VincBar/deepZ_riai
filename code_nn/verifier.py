@@ -31,7 +31,7 @@ def check_weights(net_name, netZ):
 
 
 def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxsec=None, time_info=False,
-            global_init=False, early_stop=1):
+            global_init=False):
     # TODO: think hard about this one, we want to avoid local minima
 
     if tensorboard:
@@ -52,9 +52,7 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
 
         # run an initialization based on the global loss
         if global_init:
-            optimizer = torch.optim.Adam(net.parameters(), lr=0.05)
-            # optimizer = torch.optim.ASGD(net.parameters(), lr=0.05)
-            # optimizer = torch.optim.SGD(net.parameters(), lr=0.5)
+            optimizer = (torch.optim.Adam, {'lr': 0.05}, 1)
             loss = GlobalLoss(0.1)
 
             writer = None
@@ -65,7 +63,7 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
             non_verified_digits -= set(np.where(torch.logical_not(loss.non_verified_digits))[0])
 
         while not not non_verified_digits and in_time:
-            optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
+            optimizer = torch.optim.Adam(net.parameters(), lr=0.02)
             i = list(non_verified_digits)[0]
 
             # initialize lambdas,
@@ -113,7 +111,11 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
 
 def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
 
-    orig_optimizer = copy.deepcopy(optimizer)
+    orig_optimizer = None
+    if type(optimizer) is tuple:
+        orig_optimizer, opt_args, lr_lr = optimizer
+        optimizer = orig_optimizer(net.parameters(), **opt_args)
+
     is_verified = False
     counter = 0
 
@@ -121,6 +123,7 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
 
     in_time = True
     continue_ = True
+    clipper = ClipLambdas()
     while not is_verified and in_time and continue_:
         counter += 1
         net.zero_grad()
@@ -130,13 +133,13 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
 
         # print(lss, loss, out, id(optimizer))
         if not is_verified:
-            # print(reset_optim)
-            if reset_optim:
-                optimizer = copy.deepcopy(orig_optimizer)
+            if reset_optim and orig_optimizer:
+                opt_args['lr'] *= lr_lr
+                optimizer = orig_optimizer(net.parameters(), **opt_args)
 
             lss.backward()
             optimizer.step()
-            net.apply(ClipLambdas())
+            net.apply(clipper)
 
         # assert check_lambdas(net)
 
@@ -239,8 +242,7 @@ def main():
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
     start_time = time.time()
-    if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=400, tensorboard=False, global_init=True,
-               early_stop=10):
+    if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=400, tensorboard=False, global_init=True):
         print('verified')
         print(time.time()-start_time)
     else:
