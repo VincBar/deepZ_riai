@@ -2,7 +2,7 @@ import sys
 import torch
 import torch.nn as nn
 
-sys.path.append("D:/Dokumente/GitHub/RAI_proj/code/")
+sys.path.append("D:/Dokumente/GitHub/RAI_proj/code_nn/")
 from networks import FullyConnected, Conv, NNFullyConnectedZ
 
 DEVICE="cpu"

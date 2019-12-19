@@ -1,7 +1,7 @@
 
 import torch
 import sys
-sys.path.append('D:/Dokumente/GitHub/RAI_proj/code')
+sys.path.append('D:/Dokumente/GitHub/RAI_proj/code_nn')
 from networks import NNFullyConnectedZ
 from verifier import load_Z, analyze
 from collections import OrderedDict

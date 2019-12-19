@@ -43,7 +43,7 @@ def pad_K_dim(x, pad):
     return nn.functional.pad(x, padding, mode='constant', value=0)
 
 
-def extend_Z(x, vals, l_0_u):
+def extend_Z(x, vals):
     """
     Extend the K dimension of input x by the number of ReLU's put on an affine layer in the original NN and update the
     values in the K dim by vals. (see j=K+i and j=else in case distinction in 2.2 in project paper).
@@ -52,15 +52,9 @@ def extend_Z(x, vals, l_0_u):
     :return:
     """
     K = x.shape[0]
-    pad = l_0_u.flatten().sum().int()
-    pad2 = np.prod(x.shape[1:])
-    x = pad_K_dim(x, pad.numpy())
-    if is_scalar(vals):
-        vals = vals * torch.ones(pad2)
-
-    # TODO: check this!!
-
-    x[K:, ...] = torch.diagflat(vals).view([pad2] + list(x.shape[1:]))[l_0_u.bool().flatten(), ...]
+    pad = vals.shape[0]
+    x = pad_K_dim(x, pad)
+    x[K:, ...] = vals
     return x
 
 
@@ -275,7 +269,7 @@ class ToZ(nn.Module):
 
     def forward(self, x):
         pad = np.prod(x.shape[1:])
-        return extend_Z(x, self.eps, torch.ones([pad]))
+        return extend_Z(x, torch.diagflat(self.eps).view([pad] + list(x.shape)[1:]))
 
 
 class ToZConv(ToZ):
@@ -362,6 +356,7 @@ class ReLUZ(nn.Module):
 
     def forward(self, x):
         # TODO: I don't know if the following is computed in parallel, if written like this
+        # I dont think so but not too relevant
         # input is (K, c_in, H, W) or (K, fc_size)
 
         l, u = lower_bound(x)[None, :], upper_bound(x)[None, :]
@@ -381,27 +376,44 @@ class ReLUZ(nn.Module):
 
         out = _l * x + l_0_u * self.lambdas * x
         out[0, ...] += l_0_u[0, ...] * (d / 2)[0, ...]
-        return extend_Z(out, d / 2 * l_0_u, l_0_u)
+        #import time
 
-        # # TODO: I don't know if the following is computed in parallel, if written like this  # # input is (K, c_in, H, W) or (K, fc_size)  #  # l_t, u_t = lower_bound(x)[None, :], upper_bound(x)[None, :]  # _l_t = heaviside(l_t)  # l_0_u_t = (heaviside(u_t) * heaviside(-l_t))  #  # lambda_crit_t = u_t / (u_t - l_t)  # is_lower = self.lambdas < lambda_crit_t  # is_larger = torch.logical_not(is_lower)  #  # # TODO: check if lambdas are bounded between [0,1]  # # TODO: check if broadcasting of lambdas works as expected  # # check completed see test_conv_pad  #  # # compute shift  # d_t = torch.zeros(self.lambdas.shape)  # d_t[is_larger] = - l_t[is_larger]  # d_t[is_lower] = (1 - self.lambdas[is_lower])/self.lambdas[is_lower] * u_t[is_lower]  #  # out_t = _l_t * x + l_0_u_t * self.lambdas * x  # out_t[0, ...] += l_0_u_t[0, ...] * (self.lambdas * d_t / 2)[0, ...]  # torch.all(out_t==out)  #  # return extend_Z(out_t, self.lambdas * d_t/2 * l_0_u_t, l_0_u_t)
+        #start=time.time()
+        #out_1 = extend_Z_old(out, d / 2 * l_0_u, l_0_u)
+        #mid = time.time()
+        ind = l_0_u.bool().flatten()
+        out = extend_Z(out, (self.ones[ind]*(d/2)))
+        #end = time.time()
+
+        #print(torch.all(torch.eq(out_1,out)))
+        #print("new",end-mid)
+        #print("old",mid-start)
+
+        return out
 
 
 class ReLUZConv(ReLUZ):
     def __init__(self, n_channels, height, width, *args, **kwargs):
         super(ReLUZConv, self).__init__(*args, **kwargs)
-        # TODO: Currently all lambdas are initialized as one.
-        # Maybe the initalization can be learned number specific, smallest area
-        # TODO: Only add rows that are actually relevant
+
         self.lambdas = nn.Parameter(torch.ones([1, n_channels, height, width]))
         self.lambdas.requires_grad_()
 
+        prod = n_channels * height * width
+
+        self.ones = torch.diagflat(torch.ones([1, n_channels, height, width])).view([prod] + [n_channels,height,width])
+        self.mask = self.ones > 0
+
 
 class ReLUZLinear(ReLUZ):
-    def __init__(self, fc_size, *args, **kwargs):
-        super(ReLUZLinear, self).__init__(*args, **kwargs)
+    def __init__(self, fc_size):
+        super(ReLUZLinear, self).__init__()
 
         self.lambdas = nn.Parameter(torch.ones([1, fc_size]))
         self.lambdas.requires_grad_()
+
+        self.ones = torch.diagflat(torch.ones([1,fc_size])).view([fc_size] + [fc_size])
+        self.mask = self.ones > 0
 
 
 class PairwiseLoss(nn.Module):
@@ -413,16 +425,29 @@ class PairwiseLoss(nn.Module):
     def forward(self, x):
         loss = - x[self.trained_digit]
         is_verified = torch.sum(heaviside(x)[torch.LongTensor(self.non_verified)]) > 0
-        return loss, is_verified
+        return loss, is_verified, torch.Tensor([True]), torch.Tensor([False])
 
 
 class GlobalLoss(nn.Module):
-    def __init__(self, reg):
+    def __init__(self):
         super(GlobalLoss, self).__init__()
-        self.reg = reg
+        self.non_verified_digits = torch.ones(10).bool()
+        self.out_hist = torch.ones(10) * (-np.inf)
 
     def forward(self, x):
-        loss = - torch.sum(x) + self.reg / x.shape[0] * torch.sum(torch.pdist(x.view((x.shape[0], 1)), p=1))
-        is_verified = torch.prod(heaviside(x, zero_pos=True)).bool()
+        with torch.no_grad():
+            verifs = heaviside(x, zero_pos=True)
+            is_verified = torch.prod(verifs[self.non_verified_digits]).bool()
 
-        return loss, is_verified
+            new_non_verified = torch.logical_not(verifs.bool()) & self.non_verified_digits
+            reset_optim = len(np.where(self.non_verified_digits)[0]) - len(np.where(new_non_verified)[0]) > 0
+            self.non_verified_digits = new_non_verified
+
+            continue_ = torch.all(self.out_hist < x)
+            self.out_hist[self.non_verified_digits] = x[self.non_verified_digits].detach().clone()
+
+        loss = - torch.sum(x[self.non_verified_digits])
+
+        # print(self.non_verified_digits, verifs)
+
+        return loss, is_verified, continue_, reset_optim
