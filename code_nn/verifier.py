@@ -57,7 +57,8 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
         if global_init:
             # TODO: think hard about this one, we want to avoid local minima
             # the approach seems to be sufficient
-            optimizer = torch.optim.Adam(net.parameters(), lr=0.05)
+            # optimizer = torch.optim.Adam(net.parameters(), lr=0.05)
+            optimizer = (torch.optim.Adam, {'lr':0.05})
             loss = GlobalLoss()
 
             writer = None
@@ -115,7 +116,7 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
 
     orig_optimizer = None
     if type(optimizer) is tuple:
-        orig_optimizer, opt_args, lr_lr = optimizer
+        orig_optimizer, opt_args = optimizer
         optimizer = orig_optimizer(net.parameters(), **opt_args)
 
     is_verified = False
