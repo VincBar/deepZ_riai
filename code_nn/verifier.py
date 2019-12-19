@@ -43,6 +43,11 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
         start_time = time.time()
         in_time = True
 
+        # initialize lambdas,
+        # TODO: do we restart from scratch for each digit? we could try warm starting, maybe for 'similar' digits
+        # the amount of test cases where we know the result is not sufficient
+        # TODO: search good initialization
+        # we take minimum area slopes which is in the setting of non-comparable settings reasonable
         net.initialize(inputs, eps)
 
         inputs[inputs < eps] = (inputs[inputs < eps] + eps) / 2
@@ -60,17 +65,12 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
                 writer = SummaryWriter('../runs/global_init_' + tim)
             res, out = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec)
 
-            non_verified_digits -= set(np.where(torch.logical_not(loss.non_verified_digits))[0])
+            # non_verified_digits -= set(np.where(torch.logical_not(loss.non_verified_digits))[0])
+            non_verified_digits = set(np.where(loss.non_verified_digits)[0])
 
         while not not non_verified_digits and in_time:
             optimizer = torch.optim.Adam(net.parameters(), lr=0.02)
             i = list(non_verified_digits)[0]
-
-            # initialize lambdas,
-            # TODO: do we restart from scratch for each digit? we could try warm starting, maybe for 'similar' digits
-            # the amount of test cases where we know the result is not sufficient
-            # TODO: search good initialization
-            # we take minimum area slopes which is in the setting of non-comparable settings reasonable
 
             writer = None
             if tensorboard:
@@ -136,7 +136,7 @@ def run_optimization(net, inputs, loss, optimizer, writer=None, maxsec=None):
         # print(lss, loss, out, id(optimizer))
         if not is_verified:
             if reset_optim and orig_optimizer:
-                opt_args['lr'] *= lr_lr
+                # opt_args['lr'] *= lr_lr
                 optimizer = orig_optimizer(net.parameters(), **opt_args)
 
             lss.backward()
