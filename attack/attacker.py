@@ -3,6 +3,7 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 import argparse
+from memory_profiler import profile
 
 from advertorch.utils import predict_from_logits
 from advertorch_examples.utils import get_mnist_test_loader
@@ -12,8 +13,8 @@ import sys
 
 sys.path.insert(0, '..')
 
-import code_nn
-from code_nn import verifier
+import code
+from code import verifier
 
 from collections import OrderedDict
 
@@ -32,7 +33,7 @@ DEVICE = torch.device("cpu")
 def run_jobs(jobs, joblib=True, n_jobs=4):
     if joblib:
         jobs = [delayed(job)() for job in jobs]
-        out = Parallel(n_jobs=n_jobs)(jobs)
+        out = Parallel(n_jobs=n_jobs, backend='threading')(jobs)
     else:
         out = []
         for job in jobs:
@@ -58,11 +59,11 @@ def load_nets(eps=0, target=0, zonotope=False):
     """
     nets = OrderedDict([])
     if type(eps) is int:
-        eps = [float(eps)] * len(code_nn.verifier.NET_CHOICES)
+        eps = [float(eps)] * len(code.verifier.NET_CHOICES)
 
-    neteps = zip(code_nn.verifier.NET_CHOICES, eps)
+    neteps = zip(code.verifier.NET_CHOICES, eps)
     for net_name, eps in neteps:
-        net, netZ = code_nn.verifier.load_net(net_name, eps=eps, target=target)
+        net, netZ = code.verifier.load_net(net_name, eps=eps, target=target)
         if zonotope:
             net = netZ
         nets[net_name] = net
@@ -141,7 +142,7 @@ def find_adversarial_examples(data, labels, eps, n_jobs=4):
     return eps_lower_bound, eps_lower_bound_inds
 
 
-def verify(data, labels, eps, n_jobs=4, maxsec=120, tensorboard=False, pairwise=False):
+def verify(data, labels, eps, n_jobs=4, maxsec=120, tensorboard=False, pairwise=False, global_init=False):
     """
     Try to verify all digits in data with eps L_inf norm. Any non-finite element of eps will be disregarded and set to
     non_verified.
@@ -165,8 +166,8 @@ def verify(data, labels, eps, n_jobs=4, maxsec=120, tensorboard=False, pairwise=
         non_robust_net = np.where(eps[:, i] < np.inf)[0]
         netZs_epss = [(netZ, eps[j, i]) for j, netZ in enumerate(netZs.values()) if j in non_robust_net]
 
-        jobs = [partial(code_nn.verifier.analyze, net=netZ, inputs=digit[None, :], true_label=label, eps=eps,
-                        pairwise=pairwise, tensorboard=tensorboard, maxsec=maxsec, time_info=True)
+        jobs = [partial(code.verifier.analyze, net=netZ, inputs=digit[None, :], true_label=label, eps=eps,
+                        pairwise=pairwise, tensorboard=tensorboard, maxsec=maxsec, time_info=True, global_init=global_init)
                 for netZ, eps in netZs_epss]
 
         out = run_jobs(jobs, joblib=(n_jobs != 1), n_jobs=n_jobs)
@@ -178,6 +179,8 @@ def verify(data, labels, eps, n_jobs=4, maxsec=120, tensorboard=False, pairwise=
     return is_verified, run_times
 
 
+# fp = open('memory_profiler_basic_mean.log', 'w+')
+# @profile(precision=10, stream=fp)
 def check_adv_first(data, labels, nr_eps, n_jobs=4, pairwise=True, maxsec=120, check_smaller=True,
                     *args, **kwargs):
     """
@@ -256,7 +259,7 @@ def check_verify_first(data, labels, eps, n_jobs=4, pairwise=True, maxsec=120, *
     :param kwargs:
     :return:
     """
-    eps_verif = np.ones((len(code_nn.verifier.NET_CHOICES), data.shape[0])) * eps
+    eps_verif = np.ones((len(code.verifier.NET_CHOICES), data.shape[0])) * eps
     is_verified, run_times = verify(data, labels, eps_verif, n_jobs=n_jobs, pairwise=pairwise, maxsec=maxsec,
                                     *args, **kwargs)
 
@@ -305,10 +308,11 @@ if __name__ == '__main__':
     pd.options.display.max_columns = 12
 
     # don't use joblib with tensorboard !! set n_jobs=1 to deactivate joblib
-    jobs = [partial(check_adv_first, data=cln_data[i][None, ...], labels=true_labels[i][None, ...],
+    jobs = [partial(check_adv_first,
+                    data=cln_data[i][None, ...], labels=true_labels[i][None, ...],
                     pairwise=args.pairwise, nr_eps=args.nr_eps,
                     n_jobs=args.n_jobs_per_digit, maxsec=args.maxsec,
-                    tensorboard=False, check_smaller=args.check_smaller)
+                    tensorboard=False, check_smaller=args.check_smaller, global_init=True)
             for i in range(args.n_digits)]
 
     out = run_jobs(jobs, n_jobs=args.n_jobs)

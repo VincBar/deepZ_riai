@@ -6,7 +6,7 @@ import time
 import sys
 sys.path.insert(0, '..')
 
-from code_nn.networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, \
+from networks import FullyConnected, Conv, NNFullyConnectedZ, NNConvZ, PairwiseLoss, GlobalLoss, WeightFixer, \
     check_lambdas, ClipLambdas
 from time import strftime, gmtime
 from collections import OrderedDict
@@ -25,7 +25,8 @@ def check_weights(net_name, netZ):
         pre, nr, param = key.split('.')
         nr = str(int(nr) - 2)
         if param != 'lambdas':
-            print(param,": All net parameters equal to original value ?", torch.all(state_dict_check['.'.join([pre, nr, param])] == val))
+            print(param,": All net parameters equal to original value ?",
+                  torch.all(state_dict_check['.'.join([pre, nr, param])] == val))
             print(param,": Net parameter requires gradient ?", val.requires_grad)
 
 
@@ -245,8 +246,9 @@ def main():
 
     torch.set_printoptions(linewidth=300, edgeitems=5)
     start_time = time.time()
-    if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=400, tensorboard=False, global_init=True):
+    if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=None, tensorboard=False, global_init=True):
         print('verified')
+        # print(time.time() - start_time)
     else:
         print('not verified')
 
