@@ -59,7 +59,7 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
             # TODO: think hard about this one, we want to avoid local minima
             # the approach seems to be sufficient
             # optimizer = torch.optim.Adam(net.parameters(), lr=0.05)
-            optimizer = (torch.optim.Adam, {'lr':0.05})
+            optimizer = (torch.optim.Adam, {'lr': 0.05})
             loss = GlobalLoss()
 
             writer = None
@@ -244,8 +244,9 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    torch.set_printoptions(linewidth=300, edgeitems=5)
-    start_time = time.time()
+    # torch.set_printoptions(linewidth=300, edgeitems=5)
+    # start_time = time.time()
+
     if analyze(netZ, inputs, true_label, eps, pairwise=True, maxsec=None, tensorboard=False, global_init=True):
         print('verified')
         # print(time.time() - start_time)
@@ -257,5 +258,5 @@ def main():
 
 
 if __name__ == '__main__':
-    #torch.autograd.set_detect_anomaly(True)
+    # torch.autograd.set_detect_anomaly(True)
     main()
