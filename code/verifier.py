@@ -2,7 +2,6 @@ import argparse
 import torch
 import time
 
-#sys.path.append('D:/Dokumente/GitHub/RAI_proj/code_nn')
 import sys
 sys.path.insert(0, '..')
 
@@ -37,10 +36,12 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
         from torch.utils.tensorboard import SummaryWriter
         tim = strftime("%Y-%m-%d-%H_%M_%S", gmtime())
 
+
     if pairwise:
+        
+
         trained_digits = non_verified_digits = set(range(10)) - {true_label}
         losses = dict([(i, PairwiseLoss(trained_digit=i)) for i in trained_digits])
-
         start_time = time.time()
         in_time = True
 
@@ -51,24 +52,26 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
         # we take minimum area slopes which is in the setting of non-comparable settings reasonable
         net.initialize(inputs, eps)
 
+
         inputs[inputs < eps] = (inputs[inputs < eps] + eps) / 2
         inputs[inputs > (1 - eps)] = (1 + inputs[inputs > (1 - eps)] - eps) / 2
 
         # run an initialization based on the global loss
-        if global_init:
-            # TODO: think hard about this one, we want to avoid local minima
-            # the approach seems to be sufficient
-            # optimizer = torch.optim.Adam(net.parameters(), lr=0.05)
-            optimizer = (torch.optim.Adam, {'lr': 0.05})
-            loss = GlobalLoss()
+        # if False:
+        #     # TODO: think hard about this one, we want to avoid local minima
+        #     # the approach seems to be sufficient
+        #     # optimizer = torch.optim.Adam(net.parameters(), lr=0.05)
+        #     optimizer = (torch.optim.Adam, {'lr': 0.05})
+        #     loss = GlobalLoss()
 
-            writer = None
-            if tensorboard:
-                writer = SummaryWriter('../runs/global_init_' + tim)
-            res, out = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec)
+        #     writer = None
+        #     if tensorboard:
+        #         writer = SummaryWriter('../runs/global_init_' + tim)
+        #     res, out = run_optimization(net, inputs, loss, optimizer, writer=writer, maxsec=maxsec)
 
-            # non_verified_digits -= set(np.where(torch.logical_not(loss.non_verified_digits))[0])
-            non_verified_digits = set(np.where(loss.non_verified_digits)[0])
+        #     # non_verified_digits -= set(np.where(torch.logical_not(loss.non_verified_digits))[0])
+        #     non_verified_digits = set(np.where(loss.non_verified_digits)[0])
+
 
         while not not non_verified_digits and in_time:
             optimizer = torch.optim.Adam(net.parameters(), lr=0.02)
@@ -93,15 +96,15 @@ def analyze(net, inputs, true_label, eps, pairwise=True, tensorboard=True, maxse
                 in_time = (time.time() - start_time) < maxsec
 
     else:
+
         optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
         loss = GlobalLoss()
-
         start_time = time.time()
         net.initialize(inputs, eps)
 
         inputs[inputs < eps] = (inputs[inputs < eps] + eps) / 2
         inputs[inputs > (1 - eps)] = (1 + inputs[inputs > (1 - eps)] - eps) / 2
-
+        
         writer = None
         if tensorboard:
             writer = SummaryWriter('../runs/global_' + tim)
@@ -180,7 +183,7 @@ def loadZ(net, state_dict):
 
 
 def _generate_nets(typ, eps, true_label, device, *args, **kwargs):
-    if typ is 'fc':
+    if typ == 'fc':
         net = FullyConnected(device, *args, **kwargs).to(device)
         netZ = NNFullyConnectedZ(device, *args, **kwargs, eps=eps, target=true_label).to(device)
     elif typ == 'conv':
@@ -259,4 +262,5 @@ def main():
 
 if __name__ == '__main__':
     # torch.autograd.set_detect_anomaly(True)
+
     main()

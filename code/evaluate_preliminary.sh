@@ -5,7 +5,11 @@ do
 	echo Evaluating network ${net}...
 	for spec in `ls ../preliminary_submission_test_cases/${net}`
 	do
-		python verifier.py --net ${net} --spec ../preliminary_submission_test_cases/${net}/${spec}
+		timeout 120 python verifier.py --net ${net} --spec ../preliminary_submission_test_cases/${net}/${spec}
+		exit_status=$?
+		if [[ $exit_status -eq 124 ]]; then
+			echo not verified 
+		fi
 	done
 done
 
